@@ -1,0 +1,27 @@
+# Local credentials, diagnostics, IDE state and generated files
+.DS_Store
+._*
+.local/
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.p8
+*.key
+*.pem
+*.mobileprovision
+*.log
+**/__pycache__/
+*.pyc
+/build/
+/dist/
+**/build/
+**/.gradle/
+**/.kotlin/
+**/.build/
+**/.swiftpm/
+**/DerivedData/
+**/xcuserdata/
+**/local.properties
