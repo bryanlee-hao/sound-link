@@ -1,86 +1,88 @@
 # Sound Link
 
-**让蓝牙耳机随播放，在 Mac 与 Android 之间切换。**
+**English** | [简体中文](README.zh-CN.md)
 
-Sound Link 帮助你在电脑和手机之间共用一副蓝牙耳机。当另一端开始播放时，应用根据耳机状态和系统授权协调连接，减少手动打开蓝牙设置的次数。
+**Let your Bluetooth headphones follow playback between Mac and Android.**
 
-两端通过扫码配对，在局域网内交换协调状态，音频仍由设备直接通过蓝牙播放。
+Sound Link helps you share one pair of Bluetooth headphones between your computer and phone. When playback starts on the other device, the apps coordinate the connection based on headphone state and system permissions, reducing trips to Bluetooth settings.
 
-**[官网与下载](https://gkagent.cn/sound-link/) · [反馈问题](https://github.com/bryanlee-hao/sound-link/issues) · [MIT License](LICENSE)**
+Pair your devices with a QR code. Coordination happens over your local network; audio continues to play directly through each device's Bluetooth connection.
 
-> 项目仍在持续开发和实机验证中。目前主要围绕 AirPods、Mac 和 Android 手机测试，具体限制见下文。
+**[Website & Downloads](https://gkagent.cn/sound-link/) · [Report an Issue](https://github.com/bryanlee-hao/sound-link/issues) · [MIT License](LICENSE)**
 
-## 功能
+> Sound Link is under active development and real-device testing. Testing has primarily focused on AirPods, Mac, and Android phones. See the known limitations below.
 
-- **双向自动切换**：根据新的播放事件，将耳机连接切换到正在使用的设备。
-- **扫码配对**：Android 扫描 Mac 中的配对码，建立持久的设备信任。
-- **蓝牙辅助重连**：通过蓝牙发现已配对的 Mac，帮助恢复局域网连接。
-- **播放交接**：切换成功后，在权限与播放器能力允许时，尝试暂停原设备的播放。
-- **手动控制**：可暂停自动切换，也可从 Mac 菜单栏手动将耳机切换到电脑。
-- **状态与诊断**：查看设备连接状态，导出诊断日志，方便排查问题。
-- **中英文界面**：支持简体中文、英文，以及跟随系统的浅色和深色外观。
+## Features
 
-日常使用不需要 Root、ADB 或 Shizuku，也不需要将音频传到云端。
+- **Automatic switching in both directions**: Switch the headphone connection in response to new playback events.
+- **QR code pairing**: Scan the Mac's pairing code with the Android app to establish persistent device trust.
+- **Bluetooth-assisted reconnection**: Discover a paired Mac over Bluetooth to help restore the local network connection.
+- **Playback handoff**: After a successful switch, attempt to pause playback on the previous device when permissions and player capabilities allow it.
+- **Manual controls**: Pause automatic switching, or use the Mac menu bar to switch headphones to your computer.
+- **Status and diagnostics**: Inspect connection state and export diagnostic logs for troubleshooting.
+- **English and Chinese interfaces**: Choose English or Simplified Chinese, with light, dark, and system appearance options.
 
-## 系统要求
+Normal use does not require Root, ADB, or Shizuku. Audio is not sent through the cloud.
 
-| 项目 | 要求 |
+## Requirements
+
+| Component | Requirement |
 |---|---|
-| Mac | macOS 14 或更新版本 |
-| Android | Android 17 或更新版本，API 37 |
-| 耳机 | 已分别与 Mac、Android 完成系统蓝牙配对 |
-| 网络 | 两端局域网可互通，蓝牙保持开启 |
+| Mac | macOS 14 or later |
+| Android | Android 17 or later, API 37 |
+| Headphones | Paired with both devices in their system Bluetooth settings |
+| Connectivity | Bluetooth enabled and devices able to reach each other over the local network |
 
-目前以 AirPods 为主要验证对象，其他蓝牙耳机需要逐型号验证。暂不支持 Windows 和 iPhone。
+AirPods are the primary test target. Other Bluetooth headphones need model-specific validation. Windows and iPhone are not currently supported.
 
-连接同一个 Wi-Fi 通常便于使用，但访客网络、设备隔离或防火墙仍可能阻止两端通信。
+Using the same Wi-Fi network is usually convenient, but guest networks, client isolation, or firewalls can still prevent communication.
 
-## 开始使用
+## Getting started
 
-### 1. 安装两端应用
+### 1. Install both apps
 
-前往 **[Sound Link 官网](https://gkagent.cn/sound-link/)**，查看项目介绍并获取当前可用的 Mac 和 Android 安装包。
+Visit the **[Sound Link website](https://gkagent.cn/sound-link/)** for an introduction and currently available Mac and Android downloads.
 
-- **Mac**：打开下载的 DMG，将 Sound Link 拖入“应用程序”。
-- **Android**：安装 APK，按系统提示允许对应来源安装应用。
+- **Mac**: Open the downloaded DMG and drag Sound Link into Applications.
+- **Android**: Install the APK and allow installation from that source when prompted.
 
-也可以按照下方步骤自行构建。安装包的公证状态和首次打开说明见官网下载区。
+You can also build the apps yourself using the instructions below. The website's download section describes the Mac package's notarization status and first-launch instructions.
 
-### 2. 配对电脑和手机
+### 2. Pair your computer and phone
 
-1. 在 Mac 和 Android 上打开 Sound Link。
-2. 在 Android 中选择“扫描配对码”，扫描 Mac 显示的配对二维码。
-3. 按应用引导完成蓝牙、局域网、相机、通知和伴生设备等相关授权。
+1. Open Sound Link on both devices.
+2. In the Android app, select **Scan pairing code** and scan the code shown on your Mac.
+3. Follow the setup prompts for the relevant Bluetooth, local network, camera, notification, and companion-device permissions.
 
-配对二维码用于建立设备信任，请勿公开分享。
+The pairing code establishes device trust. Do not share it publicly.
 
-### 3. 选择耳机
+### 3. Select your headphones
 
-先在两端的系统蓝牙设置中配对同一副耳机，再在 Sound Link 中选择并确认目标耳机，完成手机端的耳机控制授权。
+Pair the same headphones with both devices in their system Bluetooth settings. Then select and confirm the target headphones in Sound Link and complete the headphone-control authorization on Android.
 
-首次连接仍需由系统或用户完成。两端都没有连接耳机时，应用不会仅因为出现播放就主动连接。
+The initial headphone connection must be established by the system or the user. If neither device is connected to the headphones, playback alone will not trigger a connection.
 
-### 4. 开始播放
+### 4. Start playback
 
-确认两端连接状态正常、自动切换已开启，然后在电脑或手机上开始播放。
+Check that both apps report a working connection and that automatic switching is enabled, then start playback on your computer or phone.
 
-关闭 Mac 窗口后，应用会继续在菜单栏运行。可以随时从应用或菜单栏暂停自动切换。
+Closing the Mac window leaves Sound Link running in the menu bar. You can pause automatic switching at any time.
 
-## 从源码构建
+## Building from source
 
-### 准备环境
+### Prerequisites
 
-在 Mac 上构建完整项目需要：
+To build the complete project on a Mac, install:
 
-- 完整 Xcode，并选为当前开发工具。
-- JDK 21。
-- Android SDK Platform 37，以及当前工程要求的 Build Tools 36.0.0。
-- Python 3。
-- 网络连接，用于首次下载 Gradle、SwiftPM 等依赖。
+- Full Xcode, selected as the active developer tools.
+- JDK 21.
+- Android SDK Platform 37 and Build Tools 36.0.0, as required by the current project.
+- Python 3.
+- An internet connection for the initial Gradle, SwiftPM, and other dependency downloads.
 
-无需单独安装 Gradle，仓库已包含 Gradle Wrapper。非默认安装位置可通过 `JAVA_HOME` 和 `ANDROID_HOME` 指定。
+The repository includes the Gradle Wrapper, so a separate Gradle installation is unnecessary. Set `JAVA_HOME` and `ANDROID_HOME` if your tools are installed outside the default locations.
 
-### 获取源码并构建
+### Clone and build
 
 ```bash
 git clone https://github.com/bryanlee-hao/sound-link.git
@@ -89,9 +91,9 @@ cd sound-link
 ./scripts/build.sh
 ```
 
-脚本会执行 Android 单元测试和 lint、构建开发 APK、运行 Swift 测试，并生成完整的 Mac App。
+The script runs Android unit tests and lint, builds the development APK, runs Swift tests, and builds the complete Mac app.
 
-构建产物：
+Build outputs:
 
 ```text
 Mac
@@ -101,21 +103,21 @@ Android
 apps/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-分别安装两端开发包，再按上面的步骤扫码配对。
+Install both development builds, then pair them using the steps above.
 
-开发包使用独立的应用标识和数据存储，可与官网版本并存；配对和设置不会自动继承。默认不配置在线下载或更新服务。
+Development builds have separate application identifiers and storage. They can coexist with the website downloads, but do not automatically inherit their pairing or settings. Online downloads and updates are unconfigured by default.
 
-### 单独构建
+### Build one platform
 
-仅构建 Mac：
+Mac only:
 
 ```bash
 ./scripts/build-macos.sh
 ```
 
-也可以用 Xcode 打开 `apps/macos/SoundLink.xcodeproj`，选择 **Sound Link** scheme 和 **My Mac**。
+Alternatively, open `apps/macos/SoundLink.xcodeproj` in Xcode and select the **Sound Link** scheme and **My Mac** destination.
 
-仅构建 Android：
+Android only:
 
 ```bash
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
@@ -124,71 +126,71 @@ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ./apps/android/gradlew -p apps/android assembleDebug
 ```
 
-### 运行测试
+### Run tests
 
 ```bash
-# Mac 核心逻辑
+# Mac core logic
 swift test --package-path apps/macos
 
-# Android 单元测试与静态检查
+# Android unit tests and static checks
 ./apps/android/gradlew -p apps/android testDebugUnitTest lintDebug
 
-# 构建元数据与配置隔离
+# Build metadata and configuration isolation
 python3 -m unittest discover -s tests -v
 ```
 
-更详细的说明见[开发与测试文档](scripts/README.md)。
+See the [development and testing guide](scripts/README.md) for more details.
 
-## 已知限制
+## Known limitations
 
-- **设备兼容性仍在扩展。** 已有测试结果不代表所有耳机、播放器和 Android 厂商系统均可正常工作。
-- **切换需要时间。** 蓝牙连接和音频路由切换存在延迟，不能保证无缝切换或完全没有短暂外放。
-- **部分提示音可能触发切换。** Mac 当前的播放识别可能将通知或系统提示音视为新的播放事件。
-- **原设备暂停属于尽力而为。** 是否能够暂停取决于系统权限和播放器能力，不能保证所有应用都响应。
-- **后台恢复受系统影响。** 锁屏、深睡、省电策略、权限撤销和进程清理可能影响连接与响应；持续后台运行和耗电仍需更多实机验证。
-- **Mac 退出不会主动归还耳机。** 休眠、暂停或退出会停止 Mac 端协调，但目前没有完整的主动归还流程。
+- **Compatibility is still expanding.** Existing test results do not cover every headphone model, player, or Android vendor's system.
+- **Switching takes time.** Bluetooth connections and audio routing introduce delays. Seamless switching and zero brief speaker playback are not guaranteed.
+- **Some alerts may trigger switching.** Mac playback detection can treat notifications or system sounds as new playback.
+- **Pausing the previous device is best effort.** It depends on system permissions and player capabilities; not every app will respond.
+- **Background recovery depends on the operating system.** Screen locking, deep sleep, battery restrictions, revoked permissions, and process termination can affect responsiveness. Sustained background operation and power use need further device testing.
+- **Exiting the Mac app does not actively return headphones to the phone.** Sleeping, pausing, or quitting stops Mac-side coordination, but a complete return-handoff flow is not yet implemented.
 
-自动化测试通过不等于真实设备上的全部场景都已通过。更多范围说明见[验证文档](docs/validation.md)。
+Passing automated tests does not mean every real-device scenario has been validated. See the [validation scope](docs/validation.md).
 
-## 隐私与连接
+## Privacy and connectivity
 
-- 音频通过系统蓝牙直接播放，不经过 Sound Link 云端转发。
-- 两端在局域网内交换协调状态，连接使用设备身份校验和加密通信。
-- 设备身份密钥保存在系统 Keychain 或 Android Keystore 中。
-- 分享诊断日志前，请检查并遮蔽个人设备名称、网络地址和其他个人信息。
+- Audio plays directly over system Bluetooth; Sound Link does not relay it through the cloud.
+- Devices exchange coordination state over the local network with identity verification and encrypted communication.
+- Device identity keys are stored in the system Keychain or Android Keystore.
+- Before sharing diagnostics, review and redact personal device names, network addresses, and other personal information.
 
-## 项目结构
+## Project layout
 
 ```text
 apps/
-  macos/       Mac 应用与核心逻辑
-  android/     Android 应用
+  macos/       Mac app and core logic
+  android/     Android app
 packages/
-  protocol/    通信协议与测试样例
-assets/        图标与品牌资源
-scripts/       本地构建和资源生成
-tests/         跨模块测试
-docs/          架构、交互与验证说明
+  protocol/    Protocol specifications and test fixtures
+assets/        Icons and brand resources
+scripts/       Local builds and resource generation
+tests/         Cross-module tests
+docs/          Architecture, interaction, and validation notes
 ```
 
-本仓库包含应用源码及独立开发构建所需内容。官网运维、官方签名、公证和部署配置单独维护，不是构建本项目的前置依赖。
+This repository contains the application source and everything needed for independent development builds. Website operations, official signing, notarization, and deployment configuration are maintained separately and are not prerequisites for building this project.
 
-## 反馈与贡献
+## Feedback and contributions
 
-欢迎通过 [Issues](https://github.com/bryanlee-hao/sound-link/issues) 报告问题或提出建议，也欢迎提交 Pull Request。
+Bug reports, suggestions, and pull requests are welcome. Please use [Issues](https://github.com/bryanlee-hao/sound-link/issues) to report problems.
 
-报告兼容性问题时，请尽量提供：
+For compatibility reports, include:
 
-- Mac 型号、macOS 版本。
-- 手机型号、Android 版本及厂商系统版本。
-- 耳机型号。
-- 应用版本、复现步骤、预期与实际行为。
-- 问题发生时是否锁屏、省电或切换过网络。
+- Mac model and macOS version.
+- Phone model, Android version, and vendor OS version.
+- Headphone model.
+- App version, reproduction steps, and expected versus actual behavior.
+- Whether the device was locked, in a power-saving mode, or changing networks.
 
-请勿提交配对二维码、私钥、签名文件或未经检查的原始诊断数据。
+Do not submit pairing QR codes, private keys, signing files, or unreviewed raw diagnostics.
 
-## 许可证
+## License
 
-Sound Link 使用 [MIT 许可证](LICENSE)。
+Sound Link is licensed under the [MIT License](LICENSE).
 
-第三方依赖的许可与声明见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)。
+See [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) for third-party licenses and notices.
