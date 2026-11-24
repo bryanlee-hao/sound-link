@@ -8,7 +8,7 @@ Sound Link 帮助你在电脑和手机之间共用一副蓝牙耳机。当另一
 
 两端通过扫码配对，在局域网内交换协调状态，音频仍由设备直接通过蓝牙播放。
 
-**[官网与下载](https://gkagent.cn/sound-link/) · [反馈问题](https://github.com/bryanlee-hao/sound-link/issues) · [MIT License](LICENSE)**
+**[官网与下载](https://gulubeast.com/sound-link/) · [反馈问题](https://github.com/bryanlee-hao/sound-link/issues) · [MIT License](LICENSE)**
 
 > 项目仍在持续开发和实机验证中。目前主要围绕 AirPods、Mac 和 Android 手机测试，具体限制见下文。
 
@@ -41,7 +41,7 @@ Sound Link 帮助你在电脑和手机之间共用一副蓝牙耳机。当另一
 
 ### 1. 安装两端应用
 
-前往 **[Sound Link 官网](https://gkagent.cn/sound-link/)**，查看项目介绍并获取当前可用的 Mac 和 Android 安装包。
+前往 **[Sound Link 官网](https://gulubeast.com/sound-link/)**，查看项目介绍并获取当前可用的 Mac 和 Android 安装包。
 
 - **Mac**：打开下载的 DMG，将 Sound Link 拖入“应用程序”。
 - **Android**：安装 APK，按系统提示允许对应来源安装应用。

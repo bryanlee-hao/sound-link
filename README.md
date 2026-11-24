@@ -8,7 +8,7 @@ Sound Link helps you share one pair of Bluetooth headphones between your compute
 
 Pair your devices with a QR code. Coordination happens over your local network; audio continues to play directly through each device's Bluetooth connection.
 
-**[Website & Downloads](https://gkagent.cn/sound-link/) · [Report an Issue](https://github.com/bryanlee-hao/sound-link/issues) · [MIT License](LICENSE)**
+**[Website & Downloads](https://gulubeast.com/sound-link/) · [Report an Issue](https://github.com/bryanlee-hao/sound-link/issues) · [MIT License](LICENSE)**
 
 > Sound Link is under active development and real-device testing. Testing has primarily focused on AirPods, Mac, and Android phones. See the known limitations below.
 
@@ -41,7 +41,7 @@ Using the same Wi-Fi network is usually convenient, but guest networks, client i
 
 ### 1. Install both apps
 
-Visit the **[Sound Link website](https://gkagent.cn/sound-link/)** for an introduction and currently available Mac and Android downloads.
+Visit the **[Sound Link website](https://gulubeast.com/sound-link/)** for an introduction and currently available Mac and Android downloads.
 
 - **Mac**: Open the downloaded DMG and drag Sound Link into Applications.
 - **Android**: Install the APK and allow installation from that source when prompted.
