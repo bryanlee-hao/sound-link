@@ -160,7 +160,7 @@ final class Application: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Sound Link", .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "", .credits: NSAttributedString(string: L("让耳机跟随正在使用的设备。", "Your headphones follow the device you use."))])
     }
-    @objc func showSettings() { show(); productUI.navigate("settings") }
+    @objc func showSettings() { show(); productUI.navigate("settings", resettingHistory: true) }
     @objc func toggleConnection() { togglePause() }
     @objc func toggleAutomatic() {
         cancelManual(); handoff.enabled.toggle()
@@ -404,7 +404,7 @@ final class Application: NSObject, NSApplicationDelegate {
     func didPairPhone() {
         handoff.enabled = true
         UserDefaults.standard.set(true, forKey: "automaticSwitchingEnabled")
-        productUI.navigate("onboarding")
+        productUI.navigate("onboarding", resettingHistory: true)
         update()
     }
     func clearPeer(notify: Bool) throws {

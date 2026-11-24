@@ -447,34 +447,6 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun Endpoint(icon: Int, title: String, sample: JSONObject?) {
-        val connected = sample?.optString("connection") == "connected"
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                painterResource(icon),
-                null,
-                Modifier.size(38.dp),
-                tint =
-                    if (connected) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(title, fontSize = 13.sp)
-            Hint(
-                s(
-                    when (sample?.optString("connection")) {
-                        "connected" -> R.string.connected
-                        "disconnected" -> R.string.not_connected
-                        else -> R.string.unknown
-                    }
-                )
-            )
-        }
-    }
-
-    @Composable
     private fun WelcomeFeature(icon: Int, title: Int, detail: Int) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
             Icon(painterResource(icon), null, Modifier.padding(top = 2.dp).size(24.dp),
@@ -554,34 +526,52 @@ class MainActivity : ComponentActivity() {
                 !isFresh -> R.string.mac_unknown
                 else -> R.string.waiting_headphones
             }
+        val elsewhere = s(R.string.not_connected)
+        val here = s(R.string.home_here)
+        val unknown = s(R.string.unknown)
+        val macName = json("peer").optString("name", "Mac")
+        val phoneSide = RouteSide(
+            s(R.string.phone),
+            if (pc) here else if (phone?.optString("connection") == "disconnected") elsewhere else unknown,
+            highlighted = pc,
+        )
+        val macSide = RouteSide(
+            macName,
+            if (mc) here else if (mac?.optString("connection") == "disconnected") elsewhere else unknown,
+            highlighted = mc,
+            dimmed = !isFresh,
+        )
         Panel {
-            Icon(
-                painterResource(R.drawable.ic_headphones),
-                null,
-                Modifier.align(Alignment.CenterHorizontally).size(56.dp),
-            )
             Text(
                 target.optString("macName").ifEmpty { target.optString("phoneName").ifEmpty { s(R.string.not_selected) } },
                 Modifier.fillMaxWidth(),
-                fontSize = 27.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
             Text(
                 s(summary),
                 Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.primary,
-                fontSize = 13.sp,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 21.sp,
+                fontWeight = FontWeight.SemiBold,
             )
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
+            RouteBubbles(
+                HomeRoute.resolve(localConnected = pc, peerConnected = mc, switching = busy),
+                local = phoneSide,
+                peer = macSide,
+                localIcon = R.drawable.ic_phone,
+                peerIcon = R.drawable.ic_laptop,
+                summary = s(summary),
+            )
+            HorizontalDivider()
+            LinkRow(
+                getString(R.string.linked_with, macName),
+                s(if (isFresh) R.string.online else R.string.offline),
+                online = isFresh,
             ) {
-                Endpoint(R.drawable.ic_laptop, "Mac", mac)
-                Text("⇄", fontSize = 22.sp)
-                Endpoint(R.drawable.ic_phone, s(R.string.phone), phone)
+                TextButton({ navigate("device") }) { Text(s(R.string.manage)) }
             }
             HorizontalDivider()
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -591,11 +581,6 @@ class MainActivity : ComponentActivity() {
             Hint(s(if (enabled) R.string.follow_playback else R.string.keep_connection))
             if (prefs.getBoolean("setup_pending", false) || !ready)
                 Action(R.string.finish_setup, primary = true) { navigate("onboarding") }
-        }
-        Panel {
-            Text(json("peer").optString("name", "Mac"), fontWeight = FontWeight.Medium)
-            Hint(s(if (isFresh) R.string.connected else R.string.not_connected))
-            Action(R.string.manage) { navigate("device") }
         }
         Hint(s(if (Recovery.enabled(this)) R.string.background_on else R.string.background_off))
     }

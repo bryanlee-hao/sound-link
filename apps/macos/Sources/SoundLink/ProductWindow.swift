@@ -40,7 +40,8 @@ final class ProductWindow: NSObject, NSToolbarDelegate {
     let stack = NSStackView()
     var pages: [String: NSStackView] = [:]
     var page = "home"
-    private var downloadReturnPage = "home"
+    /// Pages the user actually came through; Back pops this instead of a fixed parent map.
+    private var history: [String] = []
     private let homePairingQR = NSImageView()
     private let homePairingCaption = NSTextField(wrappingLabelWithString: "")
     private let toolbar = NSToolbar(identifier: "SoundLink.Navigation")
@@ -48,17 +49,16 @@ final class ProductWindow: NSObject, NSToolbarDelegate {
     private let settingsID = NSToolbarItem.Identifier("SoundLink.Settings")
     let name = NSTextField(wrappingLabelWithString: "")
     let state = NSTextField(wrappingLabelWithString: "")
-    let macState = NSTextField(labelWithString: "")
-    let phoneState = NSTextField(labelWithString: "")
-    let peerName = NSTextField(wrappingLabelWithString: "")
+    let peerName = NSTextField(labelWithString: "")
     let peerState = NSTextField(labelWithString: "")
+    private let linkDot = NSView()
+    private lazy var routeView = RouteView(width: width - 48)
     let guidance = NSTextField(wrappingLabelWithString: "")
     let attention = NSTextField(wrappingLabelWithString: "")
     let logState = NSTextField(wrappingLabelWithString: "")
     let automatic = NSSwitch()
-    let macIcon = NSImageView(), phoneIcon = NSImageView()
     var setup: ActionButton!
-    var hero: NSStackView!, empty: NSStackView!, peerCard: NSStackView!
+    var hero: NSStackView!, empty: NSStackView!
     private let setupReconnectTitle = NSTextField(wrappingLabelWithString: "")
     private let setupReconnectDetail = NSTextField(wrappingLabelWithString: "")
     private let setupHeadphoneTitle = NSTextField(wrappingLabelWithString: "")
@@ -138,9 +138,11 @@ final class ProductWindow: NSObject, NSToolbarDelegate {
         return item
     }
     @objc private func goBack() {
-        navigate(page == "download" ? downloadReturnPage : page == "settings" || page == "device" || page == "pairing" ? "home" : page == "advanced" ? "diagnostics" : "settings")
+        let previous = history.last ?? "home"
+        history = Array(history.dropLast())
+        show(previous)
     }
-    @objc private func showSettings() { navigate("settings") }
+    @objc private func showSettings() { navigate("settings", resettingHistory: true) }
     private func updateToolbar() {
         let desired: [NSToolbarItem.Identifier] = page == "home" ? [.flexibleSpace, settingsID] : [backID, .flexibleSpace]
         if toolbar.items.map(\.itemIdentifier) != desired {
@@ -224,31 +226,29 @@ final class ProductWindow: NSObject, NSToolbarDelegate {
             description.widthAnchor.constraint(equalTo: copy.widthAnchor).isActive = true
             full(row([mark, copy]), in: features)
         }
-        hero = card(home); hero.alignment = .centerX; hero.spacing = 18
-        hero.addArrangedSubview(icon("headphones", size: 42))
-        name.font = .systemFont(ofSize: 27, weight: .semibold); name.alignment = .center; full(name, in: hero)
-        state.font = .systemFont(ofSize: 13); state.alignment = .center; state.textColor = .systemBlue; full(state, in: hero)
-        let devices = row([]); devices.spacing = 35
-        for (symbol, title, image, status) in [("laptopcomputer", "Mac", macIcon, macState), ("iphone", "Android", phoneIcon, phoneState)] {
-            let col = vertical(7); col.alignment = .centerX
-            image.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 27, weight: .light))
-            image.widthAnchor.constraint(equalToConstant: 48).isActive = true; image.heightAnchor.constraint(equalToConstant: 44).isActive = true
-            col.addArrangedSubview(image); col.addArrangedSubview(label(title, title))
-            status.font = .systemFont(ofSize: 12); col.addArrangedSubview(status); col.widthAnchor.constraint(equalToConstant: 130).isActive = true
-            if !devices.arrangedSubviews.isEmpty { devices.addArrangedSubview(icon("arrow.left.arrow.right", size: 17)) }
-            devices.addArrangedSubview(col)
-        }
-        hero.addArrangedSubview(devices); separator(hero)
+        hero = card(home); hero.alignment = .centerX; hero.spacing = 12
+        let heading = vertical(3); heading.alignment = .centerX; full(heading, in: hero)
+        name.font = .systemFont(ofSize: 13); name.alignment = .center; name.textColor = .secondaryLabelColor
+        state.font = .systemFont(ofSize: 21, weight: .semibold); state.alignment = .center
+        for field in [name, state] { heading.addArrangedSubview(field); field.widthAnchor.constraint(equalTo: heading.widthAnchor).isActive = true }
+        full(routeView, in: hero); routeView.heightAnchor.constraint(equalToConstant: RouteView.height).isActive = true
+        // The app-to-app link is a separate fact from the headphone route, so it gets its own row.
+        peerName.font = .systemFont(ofSize: 12); peerName.textColor = .secondaryLabelColor
+        peerState.font = .systemFont(ofSize: 12); peerState.textColor = .secondaryLabelColor
+        linkDot.wantsLayer = true; linkDot.layer?.cornerRadius = 3.5
+        linkDot.widthAnchor.constraint(equalToConstant: 7).isActive = true; linkDot.heightAnchor.constraint(equalToConstant: 7).isActive = true
+        let linkIcon = icon("link", size: 12); linkIcon.contentTintColor = .secondaryLabelColor
+        let manage = button("管理", "Manage") { [weak self] in self?.navigate("device") }
+        manage.controlSize = .small
+        separator(hero)
+        let linkRow = row([linkIcon, peerName, NSView(), linkDot, peerState, manage]); linkRow.spacing = 8
+        full(linkRow, in: hero)
+        separator(hero)
         let copy = vertical(4); copy.addArrangedSubview(label("自动切换", "Automatic switching", size: 14)); copy.addArrangedSubview(label("播放时，耳机跟随这台设备", "Headphones follow playback on this Mac", size: 12, secondary: true))
         automatic.target = app; automatic.action = #selector(Application.toggleAutomatic); automatic.setAccessibilityLabel(L("自动切换", "Automatic switching"))
         full(row([copy, NSView(), automatic]), in: hero)
         guidance.font = .systemFont(ofSize: 12); guidance.textColor = .secondaryLabelColor; guidance.alignment = .center; full(guidance, in: hero)
         setup = button("继续设置", "Continue Setup") { [weak self] in self?.navigate("onboarding") }; hero.addArrangedSubview(setup)
-        peerCard = card(home)
-        let peerCopy = vertical(5); peerName.font = .systemFont(ofSize: 14, weight: .medium); peerState.font = .systemFont(ofSize: 12); peerState.textColor = .secondaryLabelColor
-        peerCopy.addArrangedSubview(peerName); peerCopy.addArrangedSubview(peerState)
-        let manage = button("管理", "Manage") { [weak self] in self?.navigate("device") }
-        full(row([icon("iphone", size: 22), peerCopy, NSView(), manage]), in: peerCard)
         let foot = label("关闭窗口后继续运行", "Keeps running when you close this window", size: 11, secondary: true); foot.alignment = .center
         home.addArrangedSubview(foot); foot.widthAnchor.constraint(equalToConstant: width).isActive = true
     }
@@ -444,7 +444,8 @@ final class ProductWindow: NSObject, NSToolbarDelegate {
                 panel.addArrangedSubview(label("点击地址即可复制", "Click the address to copy", size: 12, secondary: true))
                 panel.addArrangedSubview(button("已安装，去配对", "Installed — Pair Phone") { [weak self] in
                     guard let self else { return }
-                    self.navigate(self.downloadReturnPage == "home" ? "home" : "pairing")
+                    // Home and the pairing page both show the pairing code; return there when that is where we came from.
+                    if ["home", "pairing"].contains(self.history.last) { self.goBack() } else { self.navigate("pairing") }
                 })
             }
         }
@@ -479,7 +480,7 @@ final class ProductWindow: NSObject, NSToolbarDelegate {
                 panel.addArrangedSubview(setupChange)
             }
         }
-        setupDone = button("稍后设置", "Set Up Later") { [weak self] in self?.navigate("home") }
+        setupDone = button("稍后设置", "Set Up Later") { [weak self] in self?.goBack() }
         page.addArrangedSubview(setupDone)
     }
     @objc private func setupPickerChanged(_ sender: NSPopUpButton) {
@@ -550,7 +551,7 @@ final class ProductWindow: NSObject, NSToolbarDelegate {
                 guard self.page == "onboarding", self.app.engine?.peer?.requestID == pairingID,
                       self.app.observation?.target.revision == revision,
                       self.app.engine?.online == true, self.currentSetupStep == .complete else { return }
-                self.navigate("home")
+                self.navigate("home", resettingHistory: true)
             }
         }
     }
@@ -594,12 +595,24 @@ final class ProductWindow: NSObject, NSToolbarDelegate {
     @objc func changeLanguage(_ sender: NSPopUpButton) {
         UserDefaults.standard.set(["system", "zh", "en"][sender.indexOfSelectedItem], forKey: "interfaceLanguage")
         for (zh, en, set) in bindings { set(L(zh, en)) }
-        app.manualMessage = ""; app.buildMenu(); app.lastQR = ""; app.update(); navigate(page)
+        app.manualMessage = ""; app.buildMenu(); app.lastQR = ""; app.update(); show(page)
         automatic.setAccessibilityLabel(L("自动切换", "Automatic switching"))
     }
-    func navigate(_ destination: String) {
-        if destination == "onboarding", app.engine?.peer == nil { navigate("pairing"); return }
-        if destination == "download", page != "download" { downloadReturnPage = page }
+    /// Push `destination` onto the back stack. Home always clears it; `resettingHistory`
+    /// makes the destination a first-level page (Back returns home), used by app-driven jumps.
+    func navigate(_ destination: String, resettingHistory: Bool = false) {
+        if destination == "onboarding", app.engine?.peer == nil { navigate("pairing", resettingHistory: resettingHistory); return }
+        if destination == "home" || resettingHistory {
+            history = destination == "home" ? [] : ["home"]
+        } else if let index = history.firstIndex(of: destination) {
+            // Revisiting a page already on the stack unwinds to it instead of growing a loop.
+            history = Array(history[..<index])
+        } else if destination != page {
+            history = history + [page]
+        }
+        show(destination)
+    }
+    private func show(_ destination: String) {
         if destination == "onboarding", page != destination { setupEditingHeadphones = false; setupPickerRevision = -1 }
         page = destination
         for (key, view) in pages { view.isHidden = key != page }
@@ -631,32 +644,40 @@ final class ProductWindow: NSObject, NSToolbarDelegate {
         controlStatus.stringValue = app.handoff.phoneReady ? L("已允许，可自动切换", "Allowed · Ready for automatic switching")
             : L("请在手机 Sound Link 中允许耳机控制。", "Allow headphone control in Sound Link on your phone.")
         attention.isHidden = app.failure.isEmpty; attention.stringValue = L("Sound Link 需要处理，请在设置中查看帮助与诊断。", "Sound Link needs attention. Open Help & Diagnostics in Settings.")
-        empty.isHidden = paired; hero.isHidden = !paired; peerCard.isHidden = !paired
+        empty.isHidden = paired; hero.isHidden = !paired
         homePairingQR.image = app.pairingQR.image
         homePairingCaption.stringValue = app.pairingCaption.stringValue
         name.stringValue = o?.target.macName.isEmpty == false ? o!.target.macName : o?.target.phoneName.isEmpty == false ? o!.target.phoneName : L("尚未选择耳机", "No headphones selected")
         let fresh = app.engine?.online == true && (o?.phoneAge ?? .infinity) < 10 && o?.phone.targetRevision == o?.target.revision
         let macConnected = o?.mac.connection == "connected" && o?.mac.targetRevision == o?.target.revision, phoneConnected = fresh && o?.phone.connection == "connected"
         let both = macConnected && phoneConnected
-        macState.stringValue = macConnected ? L("已连接", "Connected") : o?.mac.connection == "disconnected" ? L("未连接", "Not connected") : L("状态未知", "Unknown")
-        phoneState.stringValue = !fresh ? L("状态未知", "Unknown") : phoneConnected ? L("已连接", "Connected") : o?.phone.connection == "disconnected" ? L("未连接", "Not connected") : L("状态未知", "Unknown")
-        macIcon.contentTintColor = macConnected ? .systemBlue : .secondaryLabelColor; phoneIcon.contentTintColor = phoneConnected ? .systemBlue : .secondaryLabelColor
-        macState.textColor = macConnected ? .systemBlue : .secondaryLabelColor; phoneState.textColor = phoneConnected ? .systemBlue : .secondaryLabelColor
-        state.stringValue = both ? L("两端均已连接", "Connected to both devices") : macConnected ? L("耳机已连接 Mac", "Headphones connected to Mac") : phoneConnected ? L("耳机已连接手机", "Headphones connected to phone") : !fresh ? L("手机状态未知", "Phone status unknown") : L("等待耳机连接", "Waiting for headphones")
+        let switching = app.handoff.transaction != nil || app.manualOperation != nil
+        let peerLabel = app.engine?.peer?.name ?? "Android"
+        let route = HomeRoute.resolve(localConnected: macConnected, peerConnected: phoneConnected, switching: switching)
+        let elsewhere = L("未连接", "Not connected"), here = L("耳机在这", "Connected here"), unknown = L("状态未知", "Unknown")
+        let macSide = RouteView.Side(name: L("此 Mac", "This Mac"), status: macConnected ? here : o?.mac.connection == "disconnected" ? elsewhere : unknown, highlighted: macConnected)
+        let phoneSide = RouteView.Side(name: peerLabel, status: !fresh ? unknown : phoneConnected ? here : o?.phone.connection == "disconnected" ? elsewhere : unknown,
+                                       highlighted: phoneConnected, dimmed: !fresh)
+        state.stringValue = both ? L("两端都已连接", "Connected to both devices") : macConnected ? L("正在此 Mac 上使用", "In use on this Mac") : phoneConnected ? L("正在 Android 上使用", "In use on Android") : !fresh ? L("手机状态未知", "Phone status unknown") : L("耳机未连接", "Headphones not connected")
         if !app.handoff.enabled { state.stringValue = L("自动切换已暂停", "Automatic switching paused") }
         if app.paused { state.stringValue = L("设备连接已暂停", "Device connection paused") }
-        if app.handoff.transaction != nil { state.stringValue = app.handoff.transaction?.destination == "mac" ? L("正在切换到 Mac…", "Switching to Mac…") : L("正在切换到手机…", "Switching to phone…") }
+        if app.handoff.transaction != nil || app.manualOperation != nil { state.stringValue = app.manualOperation != nil || app.handoff.transaction?.destination == "mac" ? L("正在切换到 Mac…", "Switching to Mac…") : L("正在切换到手机…", "Switching to phone…") }
         if app.handoff.enabled && app.handoff.transaction == nil && app.handoff.lastOutcome == "failed" { state.stringValue = L("切换未成功，请查看诊断", "Couldn’t switch. Check Diagnostics.") }
         if !app.manualMessage.isEmpty { state.stringValue = app.manualMessage }
         if !app.failure.isEmpty { state.stringValue = L("连接服务需要处理，请查看诊断", "Connection needs attention. Check diagnostics.") }
-        state.textColor = app.paused || !app.handoff.enabled ? .secondaryLabelColor : .systemBlue
+        state.textColor = !app.failure.isEmpty ? .systemOrange : app.paused || !app.handoff.enabled ? .secondaryLabelColor : .labelColor
+        routeView.update(route: route, local: macSide, peer: phoneSide, summary: state.stringValue)
         automatic.state = app.handoff.enabled ? .on : .off
         automatic.isEnabled = paired
         let missingTarget = o?.target.ready != true
         guidance.stringValue = o?.target.pendingSide == "mac" ? L("请确认手机选择的耳机", "Confirm the headphones selected on your phone") : o?.target.macAddress.isEmpty != false ? L("先选择系统已配对的耳机", "Choose headphones paired in Bluetooth settings") : missingTarget ? L("等待另一端匹配或确认耳机", "Waiting for the other device to match or confirm") : !app.handoff.phoneReady ? L("请在手机上允许耳机控制", "Allow headphone control on your phone") : ""
         guidance.isHidden = guidance.stringValue.isEmpty; setup.isHidden = !missingTarget && app.handoff.phoneReady && app.phoneRecoveryReady
-        peerName.stringValue = app.engine?.peer?.name ?? L("未配对手机", "No paired phone")
-        peerState.stringValue = app.paused ? L("已暂停", "Paused") : app.engine?.online == true ? L("已连接", "Connected") : L("暂未连接", "Not connected")
+        let linked = !app.paused && app.engine?.online == true
+        peerName.stringValue = String(format: L("与 %@ 互联", "Linked with %@"), peerLabel)
+        peerState.stringValue = app.paused ? L("已暂停", "Paused") : linked ? L("在线", "Online") : L("离线", "Offline")
+        linkDot.effectiveAppearance.performAsCurrentDrawingAppearance {
+            linkDot.layer?.backgroundColor = (linked ? NSColor.systemGreen : NSColor.tertiaryLabelColor).cgColor
+        }
         logState.stringValue = app.diagnostics == nil ? L("日志未就绪", "Logs unavailable") : app.diagnostics?.error.isEmpty == false ? L("日志写入失败，请检查磁盘空间", "Can’t write logs. Check disk space.") : L("正在本机记录 · 最多约 4 MB", "Recording locally · up to about 4 MB")
         refreshSetup()
         app.automaticMenu?.state = app.handoff.enabled ? .on : .off

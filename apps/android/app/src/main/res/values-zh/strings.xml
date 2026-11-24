@@ -17,10 +17,10 @@
     <string name="manage">管理</string>
     <string name="background_on">Mac 后台连接已开启</string>
     <string name="background_off">Mac 后台连接已暂停</string>
-    <string name="headphones_mac">耳机已连接 Mac</string>
-    <string name="headphones_phone">耳机已连接手机</string>
-    <string name="headphones_both">两端均已连接</string>
-    <string name="waiting_headphones">等待耳机连接</string>
+    <string name="headphones_mac">正在 Mac 上使用</string>
+    <string name="headphones_phone">正在本机使用</string>
+    <string name="headphones_both">两端都已连接</string>
+    <string name="waiting_headphones">耳机未连接</string>
     <string name="mac_unknown">Mac 状态未知</string>
     <string name="switch_paused">自动切换已暂停</string>
     <string name="control_needed">请在手机上允许耳机控制</string>
@@ -232,4 +232,8 @@
     <string name="island_waiting">待连接</string>
     <string name="island_connecting">连接中</string>
     <string name="development_companion">请在 Mac 上安装配套的开发版本，然后扫描配对码。</string>
+    <string name="home_here">耳机在这</string>
+    <string name="linked_with">与 %1$s 互联</string>
+    <string name="online">在线</string>
+    <string name="offline">离线</string>
 </resources>

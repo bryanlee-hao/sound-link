@@ -17,10 +17,10 @@
     <string name="manage">Manage</string>
     <string name="background_on">Mac background connection enabled</string>
     <string name="background_off">Mac background connection paused</string>
-    <string name="headphones_mac">Headphones connected to Mac</string>
-    <string name="headphones_phone">Headphones connected to this phone</string>
+    <string name="headphones_mac">In use on Mac</string>
+    <string name="headphones_phone">In use on this phone</string>
     <string name="headphones_both">Connected to both devices</string>
-    <string name="waiting_headphones">Waiting for headphones</string>
+    <string name="waiting_headphones">Headphones not connected</string>
     <string name="mac_unknown">Mac status unknown</string>
     <string name="switch_paused">Automatic switching paused</string>
     <string name="control_needed">Allow headphone control on this phone</string>
@@ -236,4 +236,8 @@
     <string name="island_waiting">Connect?</string>
     <string name="island_connecting">Connecting</string>
     <string name="development_companion">Install the companion Mac development build, then scan its pairing code.</string>
+    <string name="home_here">Connected here</string>
+    <string name="linked_with">Linked with %1$s</string>
+    <string name="online">Online</string>
+    <string name="offline">Offline</string>
 </resources>
