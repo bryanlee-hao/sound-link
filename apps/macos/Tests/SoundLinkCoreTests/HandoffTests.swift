@@ -130,18 +130,21 @@ final class HandoffTests: XCTestCase {
         XCTAssertNil(h.transaction); XCTAssertNil(h.object["command"])
         XCTAssertTrue(h.status.contains("路由已确认")); XCTAssertTrue(h.status.contains("跳过"))
     }
-    func testMacNewIntentAndStalePhoneAlsoLatchReadOnlyUntilDeadline() throws {
+    func testMacNewEdgeAndStalePhoneKeepTakeoverButNewPhoneIntentLatchesReadOnly() throws {
         o.mac.connection = "disconnected"; phone.connection = "connected"; sync()
         o.mac.event += 1; sync(); let t = try XCTUnwrap(h.takeMacAction())
+        // An alert or route reconfiguration on the Mac must not stop its own takeover.
         o.mac.event += 1; sync()
-        XCTAssertTrue(h.valid(t.id)); XCTAssertFalse(h.macCanMutate(t.id, observation: o))
-        now += 5; h.tick(o, available: true)
+        XCTAssertTrue(h.valid(t.id)); XCTAssertTrue(h.macCanMutate(t.id, observation: o))
+        // A sleeping phone is the normal case and does not latch read-only either.
+        phone.ageMs = 8000; sync(); now += 2.1; h.tick(o, available: true)
+        XCTAssertTrue(h.valid(t.id)); XCTAssertTrue(h.macCanMutate(t.id, observation: o))
+        now += HandoffEngine.macDeadlineSeconds; h.tick(o, available: true)
         XCTAssertNil(h.transaction); h.macVerified(t.id, observation: o); XCTAssertNil(h.object["command"])
-        now += 11; sync(); o.mac.event += 1; sync()
+        phone.ageMs = 0; now += 11; sync(); o.mac.event += 1; sync()
         let next = try XCTUnwrap(h.takeMacAction())
-        phone.ageMs = 8000; sync()
-        now += 2.1; h.tick(o, available: true)
-        XCTAssertTrue(h.valid(next.id)); XCTAssertFalse(h.macCanMutate(next.id, observation: o))
+        phoneStarts()
+        XCTAssertFalse(h.macCanMutate(next.id, observation: o))
     }
     func testMacReadOnlyDoesNotSurviveSessionChangeOrExplicitStop() throws {
         o.mac.connection = "disconnected"; phone.connection = "connected"; sync()
@@ -218,20 +221,27 @@ final class HandoffTests: XCTestCase {
         h.macVerified(t.id, observation: o); XCTAssertNil(h.object["command"])
     }
 
-    func testOfflineFailureBlocksRepeatedNewPlaybackUntilFreshConnectedSnapshot() throws {
+    func testOfflineFailureCoolsDownThenRetriesWithoutPhoneReconnect() throws {
         o.mac.connection = "disconnected"; phone.connection = "connected"; sync()
         now += 8 * 3600; o.mac.event += 1; o.evaluate(online: false); h.tick(o, available: true)
         let t = try XCTUnwrap(h.takeMacAction())
         h.failed(t.id, "连接失败")
-        XCTAssertFalse(o.offlineUseValid); XCTAssertNotNil(o.phoneUseAge)
-        for _ in 0..<3 {
-            now += 20; o.mac.event += 1; o.evaluate(online: false); h.tick(o, available: true)
-            XCTAssertNil(h.takeMacAction()); XCTAssertNil(h.transaction)
-        }
-        phone.stateSync = true; phone.usageRecoveryToken = o.usageRecoveryToken; sync()
-        XCTAssertTrue(o.offlineUseValid); XCTAssertNil(h.transaction)
-        now += 20; o.mac.event += 1; o.evaluate(online: false); h.tick(o, available: true)
+        XCTAssertFalse(o.offlineUseValid); XCTAssertTrue(o.offlineRetryBlocked); XCTAssertNotNil(o.phoneUseAge)
+        now += 12; o.mac.event += 1; o.evaluate(online: false); h.tick(o, available: true)
+        XCTAssertNil(h.takeMacAction()); XCTAssertNil(h.transaction)
+        XCTAssertTrue(o.usageStatus.contains("冷却"))
+        now += ObservationEngine.offlineRetryCooldown; o.evaluate(online: false)
+        XCTAssertFalse(o.offlineRetryBlocked); XCTAssertTrue(o.offlineUseValid)
+        o.mac.event += 1; o.evaluate(online: false); h.tick(o, available: true)
         XCTAssertNotNil(h.takeMacAction())
+    }
+    func testFreshConnectedSnapshotClearsOfflineCooldownEarly() throws {
+        o.mac.connection = "disconnected"; phone.connection = "connected"; sync()
+        now += 20; o.mac.event += 1; o.evaluate(online: false); h.tick(o, available: true)
+        let t = try XCTUnwrap(h.takeMacAction())
+        h.failed(t.id, "连接失败"); XCTAssertFalse(o.offlineUseValid)
+        now += 1; phone.stateSync = true; phone.usageRecoveryToken = o.usageRecoveryToken; sync()
+        XCTAssertTrue(o.offlineUseValid)
     }
     func testOfflineTimeoutAlsoBlocksNewPlayback() throws {
         o.mac.connection = "disconnected"; phone.connection = "connected"; sync()
@@ -264,15 +274,16 @@ final class HandoffTests: XCTestCase {
         XCTAssertEqual(h.object["phase"] as? String, "finished")
     }
 
-    func testMacDestinationInputCanContinueButUnreadabilityLatchesReadOnly() throws {
+    func testMacOutputChurnDuringTakeoverNeverLatchesReadOnly() throws {
         o.mac.connection = "disconnected"; phone.connection = "connected"; sync()
         o.mac.audioReadable = true; o.mac.protectedAudio = true
         o.mac.event += 1; sync()
         let t = try XCTUnwrap(h.takeMacAction())
         XCTAssertTrue(h.macCanMutate(t.id, observation: o))
-        o.mac.audioReadable = false; sync()
-        XCTAssertTrue(h.valid(t.id)); XCTAssertFalse(h.macCanMutate(t.id, observation: o))
-        o.mac.audioReadable = true; sync()
+        // Route switches reset Mac edges and can briefly make processes unreadable.
+        o.mac.audioReadable = false; o.mac.media = false; o.mac.playing = "unknown"; sync()
+        XCTAssertTrue(h.valid(t.id)); XCTAssertTrue(h.macCanMutate(t.id, observation: o))
+        phone.protectedAudio = true; sync()
         XCTAssertFalse(h.macCanMutate(t.id, observation: o))
     }
     func testProtectedPhoneDestinationCanConfirmRouteAndPauseUnprotectedOldMac() throws {

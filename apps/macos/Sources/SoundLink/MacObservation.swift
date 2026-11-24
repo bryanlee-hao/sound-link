@@ -66,7 +66,7 @@ final class MacObservation {
         guard let processes = words(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyProcessObjectList) else {
             edges.resetBaseline(); edgeAt = nil; activeBundles = []; s.playback = "无法读取 Core Audio 输出活动"; return s
         }
-        var active = Set<UInt32>(), names: [String] = [], routes = Set<String>(), input = false, unknown = false
+        var active = Set<UInt32>(), edgeCandidates = Set<UInt32>(), names: [String] = [], routes = Set<String>(), input = false, unknown = false
         var bundles = Set<String>(), classifications: [AudioObjectID: AudioInputProtection] = [:]
         for process in processes {
             guard let out = words(process, kAudioProcessPropertyIsRunningOutput)?.first,
@@ -94,7 +94,9 @@ final class MacObservation {
                 let appName = pid.flatMap { NSRunningApplication(processIdentifier: pid_t(bitPattern: $0))?.localizedName }
                 let bundle = string(process, kAudioProcessPropertyBundleID) ?? pid.flatMap { NSRunningApplication(processIdentifier: pid_t(bitPattern: $0))?.bundleIdentifier } ?? ""
                 bundles.insert(bundle)
-                names.append(appName ?? string(process, kAudioProcessPropertyBundleID) ?? "未知进程")
+                let name = appName ?? string(process, kAudioProcessPropertyBundleID) ?? "未知进程"
+                names.append(name)
+                if !SystemSoundSources.isSystemSound(bundle) && !SystemSoundSources.isSystemSound(name) { edgeCandidates.insert(process) }
                 if let devices = words(process, kAudioProcessPropertyDevices, scope: kAudioObjectPropertyScopeOutput) {
                     for device in devices { routes.insert(string(device, kAudioObjectPropertyName) ?? "未知输出") }
                 } else { routes.insert("部分进程输出未知") }
@@ -104,7 +106,7 @@ final class MacObservation {
         if let previousRoute, previousRoute != routeKey { edges.resetBaseline(); edgeAt = nil }
         previousRoute = routeKey
         let previousEvent = edges.event
-        edges.update(active: active, readable: !unknown)
+        edges.update(active: edgeCandidates, readable: !unknown, now: MonotonicTime.now)
         if unknown { edgeAt = nil }
         else if edges.event != previousEvent { edgeAt = MonotonicTime.now }
         s.eventAgeMs = edgeAt.map { max(0, MonotonicTime.now - $0) * 1000 }

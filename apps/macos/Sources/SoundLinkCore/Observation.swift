@@ -82,9 +82,15 @@ public final class ObservationEngine {
     public private(set) var coordinationGeneration = 0
     public var allowOfflineMac = true
     public var phoneUseAge: Double? { phoneUseAt.map { max(0, clock() - $0) } }
-    public var offlineUseValid: Bool { allowOfflineMac && target.ready && !lastPhoneProtected && phoneUseAt != nil && failedAt == nil }
+    /// A failed offline takeover pauses retries briefly instead of until the phone reconnects,
+    /// because a sleeping phone may not report again for a long time.
+    public static let offlineRetryCooldown: TimeInterval = 30
+    public var offlineRetryBlocked: Bool { failedAt.map { clock() - $0 < Self.offlineRetryCooldown } ?? false }
+    public var offlineUseValid: Bool { allowOfflineMac && target.ready && !lastPhoneProtected && phoneUseAt != nil && !offlineRetryBlocked }
     public var usageStatus: String {
-        if failedAt != nil { return "失联接管已暂停：" + offlineFailure + "；等待新的耳机连接确认" }
+        if let failedAt, offlineRetryBlocked {
+            return "失联接管冷却中：" + offlineFailure + "；\(Int(max(0, Self.offlineRetryCooldown - (clock() - failedAt)))) 秒后允许重试"
+        }
         guard let age = phoneUseAge else { return "暂无耳机使用会话，失联时不接管" }
         return "使用会话保留 · 最近连接确认距今 \(Int(age)) 秒 · " + (offlineUseValid ? "允许失联接管，无固定到期时间" : "失联开关关闭或存在保护")
     }
@@ -231,6 +237,6 @@ public final class ObservationEngine {
         let targetObject = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(target))) as? [String: Any] ?? [:]
         return ["v": 1, "mode": "observe_only", "target": targetObject, "mac": mac.object,
                 "phone": phone.object, "title": title, "reason": reason, "history": history,
-                "usageRecoveryToken": usageRecoveryToken, "usageStatus": usageStatus, "offlineRetryBlocked": failedAt != nil, "usageSessionActive": phoneUseAt != nil, "phoneFresh": phoneAge < 10, "offlineMacAllowed": allowOfflineMac, "phoneUseAgeSeconds": phoneUseAge ?? -1, "offlineUseValid": offlineUseValid, "sampledAt": Date().timeIntervalSince1970]
+                "usageRecoveryToken": usageRecoveryToken, "usageStatus": usageStatus, "offlineRetryBlocked": offlineRetryBlocked, "usageSessionActive": phoneUseAt != nil, "phoneFresh": phoneAge < 10, "offlineMacAllowed": allowOfflineMac, "phoneUseAgeSeconds": phoneUseAge ?? -1, "offlineUseValid": offlineUseValid, "sampledAt": Date().timeIntervalSince1970]
     }
 }

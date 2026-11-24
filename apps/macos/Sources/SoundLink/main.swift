@@ -322,7 +322,7 @@ final class Application: NSObject, NSApplicationDelegate {
         handoffButton.title = handoff.enabled ? L("暂停自动切换", "Pause Automatic Switching") : L("启用自动切换", "Enable Automatic Switching")
         handoffButton.isEnabled = handoff.enabled || (o.target.ready && handoff.phoneReady)
         let useStatus = o.usageStatus
-        handoffLabel.stringValue = handoff.status + "\n" + useStatus + "\n" + (handoff.phoneReady ? "手机控制就绪" : "请先在手机授权目标耳机控制") + " · 不按播放器名单判断；提示音也可能触发\n" + handoff.history.prefix(3).joined(separator: "\n")
+        handoffLabel.stringValue = handoff.status + "\n" + useStatus + "\n" + (handoff.phoneReady ? "手机控制就绪" : "请先在手机授权目标耳机控制") + " · 系统提示音和不足 1.5 秒的短音不触发\n" + handoff.history.prefix(3).joined(separator: "\n")
         let devices = audioObserver.devices()
         let names = [L("选择已配对的耳机", "Choose paired headphones")] + devices.map { "\($0.name) · \($0.address.suffix(5))" }
         if targetPicker.itemTitles != names {

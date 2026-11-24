@@ -41,7 +41,7 @@ final class MacHandoff: NSObject {
         }
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             guard let self, self.id == operationID else { return }
-            guard MonotonicTime.now - self.started < 5 else { self.finish(false, "连接超时（5 秒）"); return }
+            guard MonotonicTime.now - self.started < HandoffEngine.macDeadlineSeconds else { self.finish(false, "连接超时（\(Int(HandoffEngine.macDeadlineSeconds)) 秒）"); return }
             guard valid() else { self.mark("verification_stopped"); self.cancel(); return }
             let mutationsAllowed = mayMutate()
             if !mutationsAllowed { self.mark("read_only") }

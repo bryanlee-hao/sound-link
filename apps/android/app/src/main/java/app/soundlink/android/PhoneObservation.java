@@ -203,7 +203,8 @@ final class PhoneObservation {
         }
         if (reset) edges.resetBaseline();
         // Mute/route reconfiguration gaps are not a user starting new playback.
-        if (!PhoneMuteGuard.active() && !(music && usages.isEmpty())) edges.update(usages);
+        if (!PhoneMuteGuard.active() && !(music && usages.isEmpty()))
+          edges.update(usages, SystemClock.elapsedRealtime());
         if (edges.event != previousEvent) eventElapsed = SystemClock.elapsedRealtime();
         int mode = audio.getMode();
         boolean protectedAudio = mode != AudioManager.MODE_NORMAL;

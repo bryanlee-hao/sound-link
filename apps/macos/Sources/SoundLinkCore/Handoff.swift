@@ -2,6 +2,9 @@ import Foundation
 
 /// One bounded transaction per new edge. No Bluetooth or player calls in the policy layer.
 public final class HandoffEngine {
+    /// Paging headphones held by the phone regularly takes 5-8 seconds on macOS.
+    public static let macDeadlineSeconds: TimeInterval = 10
+    public static let phoneDeadlineSeconds: TimeInterval = 5
     public struct Transaction {
         public let id: String, destination: String, epoch: String, target: HeadphoneTarget
         public let mac: AudioObservation, phone: AudioObservation
@@ -43,7 +46,7 @@ public final class HandoffEngine {
         status = message
         history.insert(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium) + " · " + message, at: 0)
         history = Array(history.prefix(6))
-        changed?(message, ["id": transaction?.id ?? "", "phase": phase, "offlineMac": transaction?.offlineMac ?? false, "usageStatus": observation?.usageStatus ?? "", "offlineRetryBlocked": !(observation?.offlineFailure.isEmpty ?? true)])
+        changed?(message, ["id": transaction?.id ?? "", "phase": phase, "offlineMac": transaction?.offlineMac ?? false, "usageStatus": observation?.usageStatus ?? "", "offlineRetryBlocked": observation?.offlineRetryBlocked ?? false])
     }
     public func cancel(_ reason: String) {
         lastOutcome = ""
@@ -102,7 +105,7 @@ public final class HandoffEngine {
                 cancel("目标或观察实例已变化，取消旧动作"); return
             }
             if now >= t.deadline || (phase.hasPrefix("pausing") && now >= pauseUntil) {
-                finish(phase.hasPrefix("pausing") ? "接管成功 · 旧端暂停未确认，已跳过" : "接管超时（5 秒）· 不重试、不回滚"); return
+                finish(phase.hasPrefix("pausing") ? "接管成功 · 旧端暂停未确认，已跳过" : "接管超时（\(Int(t.destination == "mac" ? Self.macDeadlineSeconds : Self.phoneDeadlineSeconds)) 秒）· 不重试、不回滚"); return
             }
             if phase == "connecting_mac" { _ = macCanMutate(t.id, observation: o) }
             return
@@ -119,19 +122,21 @@ public final class HandoffEngine {
         let offline = direction == "mac" && o.offlineCandidate && o.offlineUseValid
         guard phoneReady, offline || o.phoneAge < 10 else { report("等待手机控制授权及新鲜状态 · 本轮不连接"); return }
         guard direction != "mac" || o.mac.media else { report("Mac 当前没有新的输出候选 · 不接管"); return }
-        let t = Transaction(id: UUID().uuidString, destination: direction, epoch: o.sessionEpoch, target: o.target, mac: o.mac, phone: o.phone, deadline: now + 5, offlineMac: offline, generation: o.coordinationGeneration)
+        let t = Transaction(id: UUID().uuidString, destination: direction, epoch: o.sessionEpoch, target: o.target, mac: o.mac, phone: o.phone, deadline: now + (direction == "mac" ? Self.macDeadlineSeconds : Self.phoneDeadlineSeconds), offlineMac: offline, generation: o.coordinationGeneration)
         macReadOnly = false; routeProven = false
         lastOutcome = ""; transaction = t; phase = direction == "phone" ? "connecting_phone" : "connecting_mac"
         report(direction == "phone" ? "手机正在接管 · 等待耳机及媒体路由" : offline ? "Mac 离线接管 · 单次连接，不补发手机暂停" : "Mac 正在接管 · 等待耳机及输出路由")
         if direction == "mac" { macAction = t }
     }
-    /// Once intent/protection changes, only bounded reads remain, even if it changes back.
+    /// Once the phone shows protection or a new intent, only bounded reads remain, even if it changes back.
+    /// Mac-side output churn (route reconfiguration, alerts, extra players) is expected while
+    /// the headphones move and never cancels the Mac's own committed takeover.
     public func macCanMutate(_ id: String, observation o: ObservationEngine) -> Bool {
         guard valid(id), let t = transaction, t.destination == "mac" else { return false }
-        if !macReadOnly && (o.mac.event != t.mac.event || o.mac.playing != "active" ||
-            !o.mac.media || !o.mac.isAudioReadable ||
-            (t.offlineMac ? (!o.allowOfflineMac || (o.phoneAge < 10 && (o.phone.protectedAudio || !o.phone.isAudioReadable || o.phone.event != t.phone.event || o.phone.connection != "connected")))
-                          : (o.phoneAge >= 10 || o.phone.protectedAudio || !o.phone.isAudioReadable || o.phone.event != t.phone.event))) {
+        let phoneFresh = o.phoneAge < 10
+        let phoneIntentChanged = phoneFresh && o.phone.instance == t.phone.instance && o.phone.event != t.phone.event
+        let phoneProtected = phoneFresh && (o.phone.protectedAudio || !o.phone.isAudioReadable)
+        if !macReadOnly && ((t.offlineMac && !o.allowOfflineMac) || phoneIntentChanged || phoneProtected) {
             macReadOnly = true
             report("起播或保护状态变化 · 仅验证已提交连接，不再改路由或暂停旧端")
         }

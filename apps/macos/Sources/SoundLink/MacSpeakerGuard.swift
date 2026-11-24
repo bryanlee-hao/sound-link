@@ -1,5 +1,6 @@
 import Foundation
 import CoreAudio
+import SoundLinkCore
 
 /// A warm child owns the mute and its deadline. Parent exit/pipe EOF restores it too.
 final class MacSpeakerGuard {
@@ -90,9 +91,10 @@ private final class SpeakerMuteWorker {
         do {
             try persist() // Recovery record must exist before any hardware change.
             for (uid, device) in builtins where saved[uid] != nil { try write(device, 1) }
-            emit("muted", "内置扬声器 · 最长 5 秒")
-            let work = DispatchWorkItem { [weak self] in self?.restore("timeout_5s", expected: id) }
-            expiry = work; DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 5, execute: work)
+            let limit = HandoffEngine.macDeadlineSeconds
+            emit("muted", "内置扬声器 · 最长 \(Int(limit)) 秒")
+            let work = DispatchWorkItem { [weak self] in self?.restore("timeout_\(Int(limit))s", expected: id) }
+            expiry = work; DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + limit, execute: work)
         } catch { emit("error", error.localizedDescription); restore("failure") }
     }
     func restore(_ reason: String, expected: String? = nil) {

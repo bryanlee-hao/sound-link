@@ -2,30 +2,52 @@ import XCTest
 @testable import SoundLinkCore
 
 final class OutputEdgesTests: XCTestCase {
-    func testExistingPlaybackIsBaselineButShortNewOutputQualifiesImmediately() {
+    var now: TimeInterval = 100
+    func step(_ e: inout OutputEdges, _ active: Set<UInt32>, readable: Bool = true, by delta: TimeInterval = 0.2) {
+        now += delta; e.update(active: active, readable: readable, now: now)
+    }
+    func sustain(_ e: inout OutputEdges, _ active: Set<UInt32>) {
+        step(&e, active); step(&e, active, by: OutputEdges.defaultSustainSeconds)
+    }
+    func testExistingPlaybackIsBaselineAndSustainedNewOutputQualifies() {
         var e = OutputEdges()
-        e.update(active: [1]); e.update(active: [1])
+        step(&e, [1]); step(&e, [1])
         XCTAssertEqual(e.event, 0); XCTAssertFalse(e.eligible)
-        e.update(active: [1, 2])
+        sustain(&e, [1, 2])
         XCTAssertEqual(e.event, 1); XCTAssertTrue(e.eligible)
-        e.update(active: [1])
+        step(&e, [1])
         XCTAssertEqual(e.event, 1); XCTAssertFalse(e.eligible)
     }
-    func testAnyNewOutputQualifiesWithoutBundleOrPlayerMetadataAndDoesNotRepeat() {
+    func testShortOutputBelowThresholdNeverQualifies() {
         var e = OutputEdges()
-        e.update(active: [])
-        e.update(active: [777]); XCTAssertEqual(e.event, 1); XCTAssertTrue(e.eligible)
-        e.update(active: [777]); XCTAssertEqual(e.event, 1)
-        e.update(active: []); XCTAssertFalse(e.eligible)
-        e.update(active: [777]); XCTAssertEqual(e.event, 2); XCTAssertTrue(e.eligible)
+        step(&e, [1])
+        step(&e, [1, 2]); step(&e, [1, 2], by: 0.8); step(&e, [1])
+        step(&e, [1], by: 5)
+        XCTAssertEqual(e.event, 0); XCTAssertFalse(e.eligible)
+    }
+    func testOutputQualifiesExactlyAtThresholdAndDoesNotRepeat() {
+        var e = OutputEdges()
+        step(&e, [])
+        step(&e, [777]); step(&e, [777], by: OutputEdges.defaultSustainSeconds - 0.1)
+        XCTAssertEqual(e.event, 0)
+        step(&e, [777], by: 0.1); XCTAssertEqual(e.event, 1); XCTAssertTrue(e.eligible)
+        step(&e, [777], by: 30); XCTAssertEqual(e.event, 1)
+        step(&e, []); XCTAssertFalse(e.eligible)
+        sustain(&e, [777]); XCTAssertEqual(e.event, 2); XCTAssertTrue(e.eligible)
     }
     func testNewOutputOverOldPlaybackAndUnknownStateReset() {
         var e = OutputEdges()
-        e.update(active: [1])
-        e.update(active: [1,2]); XCTAssertEqual(e.event, 1); XCTAssertTrue(e.eligible)
-        e.update(active: [1,2], readable: false); XCTAssertFalse(e.eligible)
-        e.update(active: [1,2]); e.update(active: [1,2])
+        step(&e, [1])
+        sustain(&e, [1, 2]); XCTAssertEqual(e.event, 1); XCTAssertTrue(e.eligible)
+        step(&e, [1, 2], readable: false); XCTAssertFalse(e.eligible)
+        sustain(&e, [1, 2]); step(&e, [1, 2])
         XCTAssertEqual(e.event, 1); XCTAssertFalse(e.eligible)
-        e.update(active: [1,2,3]); XCTAssertEqual(e.event, 2); XCTAssertTrue(e.eligible)
+        sustain(&e, [1, 2, 3]); XCTAssertEqual(e.event, 2); XCTAssertTrue(e.eligible)
+    }
+    func testSystemAlertSourcesAreRecognisedCaseInsensitively() {
+        XCTAssertTrue(SystemSoundSources.isSystemSound("systemsoundserverd"))
+        XCTAssertTrue(SystemSoundSources.isSystemSound("com.apple.UserNotificationCenter"))
+        XCTAssertFalse(SystemSoundSources.isSystemSound("com.google.Chrome.helper"))
+        XCTAssertFalse(SystemSoundSources.isSystemSound("com.apple.Music"))
     }
 }

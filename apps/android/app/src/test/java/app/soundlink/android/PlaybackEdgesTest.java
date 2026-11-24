@@ -6,32 +6,91 @@ import java.util.*;
 import org.junit.Test;
 
 public class PlaybackEdgesTest {
+  private long now = 10_000;
+
+  /** Repeats the same sample long enough to pass the sustain threshold. */
+  private void sustain(PlaybackEdges e, Map<Integer, Integer> usages) {
+    e.update(usages, now);
+    now += PlaybackEdges.DEFAULT_SUSTAIN_MS;
+    e.update(usages, now);
+  }
+
+  private void step(PlaybackEdges e, Map<Integer, Integer> usages) {
+    now += 200;
+    e.update(usages, now);
+  }
+
   @Test
   public void initialAndRestoredPlaybackNeverBecomeNewEvents() {
     var e = new PlaybackEdges(Set.of(1, 14));
-    e.update(Map.of(1, 1));
+    step(e, Map.of(1, 1));
     assertEquals(0, e.event);
     assertFalse(e.media);
-    e.update(Map.of());
-    e.update(Map.of(1, 1));
+    step(e, Map.of());
+    sustain(e, Map.of(1, 1));
     assertEquals(1, e.event);
     assertTrue(e.media);
     e.resetBaseline();
-    e.update(Map.of(1, 1));
+    sustain(e, Map.of(1, 1));
     assertEquals(1, e.event);
     assertFalse(e.media);
   }
 
   @Test
-  public void notificationOverExistingMusicIsNotANewMediaEvent() {
+  public void shortMediaSoundBelowThresholdIsNotAnEvent() {
     var e = new PlaybackEdges(Set.of(1, 14));
-    e.update(Map.of());
-    e.update(Map.of(1, 1));
-    assertTrue(e.media);
-    e.update(Map.of(1, 1, 5, 1));
+    step(e, Map.of());
+    step(e, Map.of(1, 1));
+    step(e, Map.of(1, 1));
+    assertEquals(0, e.event);
+    assertFalse(e.media);
+    step(e, Map.of());
+    now += PlaybackEdges.DEFAULT_SUSTAIN_MS;
+    step(e, Map.of());
+    assertEquals(0, e.event);
+  }
+
+  @Test
+  public void mediaQualifiesOnceSustainedAndDoesNotRepeat() {
+    var e = new PlaybackEdges(Set.of(1, 14));
+    step(e, Map.of());
+    step(e, Map.of(1, 1));
+    now += PlaybackEdges.DEFAULT_SUSTAIN_MS - 300;
+    e.update(Map.of(1, 1), now);
+    assertEquals(0, e.event);
+    step(e, Map.of(1, 1));
+    step(e, Map.of(1, 1));
     assertEquals(1, e.event);
     assertTrue(e.media);
-    e.update(Map.of(1, 1));
+    now += 10_000;
+    step(e, Map.of(1, 1));
+    assertEquals(1, e.event);
+  }
+
+  @Test
+  public void shortSecondPlayerOverExistingMusicIsNotAnEvent() {
+    var e = new PlaybackEdges(Set.of(1, 14));
+    step(e, Map.of(1, 1));
+    step(e, Map.of(1, 2));
+    step(e, Map.of(1, 1));
+    now += PlaybackEdges.DEFAULT_SUSTAIN_MS;
+    step(e, Map.of(1, 1));
+    assertEquals(0, e.event);
+    sustain(e, Map.of(1, 2));
+    assertEquals(1, e.event);
+    assertTrue(e.media);
+  }
+
+  @Test
+  public void notificationOverExistingMusicIsNotANewMediaEvent() {
+    var e = new PlaybackEdges(Set.of(1, 14));
+    step(e, Map.of());
+    sustain(e, Map.of(1, 1));
+    assertTrue(e.media);
+    sustain(e, Map.of(1, 1, 5, 1));
+    assertEquals(1, e.event);
+    assertTrue(e.media);
+    step(e, Map.of(1, 1));
     assertEquals(1, e.event);
     assertTrue(e.media);
   }
@@ -39,32 +98,32 @@ public class PlaybackEdgesTest {
   @Test
   public void mediaStopAndUnchangedCountsDoNotKeepAFalseCandidate() {
     var e = new PlaybackEdges(Set.of(1, 14));
-    e.update(Map.of());
-    e.update(Map.of(1, 1));
-    e.update(Map.of(1, 1));
+    step(e, Map.of());
+    sustain(e, Map.of(1, 1));
+    step(e, Map.of(1, 1));
     assertEquals(1, e.event);
-    e.update(Map.of(5, 1));
+    step(e, Map.of(5, 1));
     assertFalse(e.media);
-    e.update(Map.of());
+    step(e, Map.of());
     assertFalse(e.media);
   }
 
   @Test
   public void nonMediaSoundsNeitherStartNorCancelMediaIntent() {
     var e = new PlaybackEdges(Set.of(1, 14));
-    e.update(Map.of());
-    e.update(Map.of(5, 1));
+    step(e, Map.of());
+    sustain(e, Map.of(5, 1));
     assertEquals(0, e.event);
     assertFalse(e.media);
-    e.update(Map.of(1, 1, 5, 1));
+    sustain(e, Map.of(1, 1, 5, 1));
     assertEquals(1, e.event);
     assertTrue(e.media);
-    e.update(Map.of(1, 1, 5, 2));
+    step(e, Map.of(1, 1, 5, 2));
     assertEquals(1, e.event);
     assertTrue(e.media);
-    e.update(Map.of(5, 2));
+    step(e, Map.of(5, 2));
     assertFalse(e.media);
-    e.update(Map.of(1, 1));
+    sustain(e, Map.of(1, 1));
     assertEquals(2, e.event);
     assertTrue(e.media);
   }
