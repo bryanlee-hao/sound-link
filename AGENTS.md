@@ -45,7 +45,7 @@ Run the test command for every module you touch before reporting work as done. P
 ## Cross-cutting rules
 
 - **Behavior lives in docs first.** Handoff/coordination semantics are defined in `docs/coordination.md` and `packages/protocol/handoff-v1.md`. If code and docs disagree, flag it; don't silently change one side.
-- **Both ends move together.** Any change to a message field, state, or timing budget (e.g. the 5 s handoff transaction, `ttlMs <= 5000`, 900 s / 840 s token lifetimes) must update the Mac side, the Android side, the protocol spec, and fixtures in the same change.
+- **Both ends move together.** Any change to a message field, state, or timing budget (e.g. handoff deadlines — Mac 10 s / phone 5 s with `ttlMs <= 5000`, 1.5 s playback sustain, 30 s offline retry cooldown, 900 s / 840 s token lifetimes) must update the Mac side, the Android side, the protocol spec, and fixtures in the same change.
 - **Pure state machines, injected platform.** Decision logic (Mac `HandoffEngine`, Android `OfflinePhonePolicy` etc.) must not call network, Bluetooth or UI directly. Write pure transitions with an injectable clock and test them; keep platform adapters thin.
 - **Unknown is not disconnected.** Never treat unreadable/unknown state as a green light for an automatic action. A connect request returning success is not a successful handoff — route must be verified.
 - **Source pause is best effort.** Never use play/pause toggles; send at most one explicit `pause`, and never let pause failure trigger a reverse connect or retry loop.

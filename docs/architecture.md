@@ -1,6 +1,6 @@
 # Sound Link 技术架构
 
-当前实现范围：0.4.10 已接入原生安装/配对/认证心跳、BLE/GATT 发现、播放观察、双向实际交接、短时静音、按使用会话的 Mac 失联接管和失败阻止。普通交接共 5 秒，成功后暂停旧端尽力而为。手机独立失联接管已接入，正常退出主动归还仍未实现；持续息屏可靠性以[验证记录](validation.md)为准。
+当前实现范围：0.4.10 已接入原生安装/配对/认证心跳、BLE/GATT 发现、播放观察、双向实际交接、短时静音、按使用会话的 Mac 失联接管和失败冷却。普通交接期限为 Mac 接管 10 秒、手机接管 5 秒，成功后暂停旧端尽力而为。手机独立失联接管已接入，正常退出主动归还仍未实现；持续息屏可靠性以[验证记录](validation.md)为准。
 
 精确已实现接口见[配对协议](../packages/protocol/pairing-v1.md)、[发现协议](../packages/protocol/discovery-v1.md)、[观察协议](../packages/protocol/observation-v1.md)和[交接协议](../packages/protocol/handoff-v1.md)。完整协议草案不代表已实现接口。
 
