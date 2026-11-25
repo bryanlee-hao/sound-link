@@ -24,6 +24,8 @@ final class Application: NSObject, NSApplicationDelegate {
     var audioTimer: Timer?
     var discovery: MacDiscovery?
     var diagnostics: MacDiagnostics?
+    let watchdog = MainThreadWatchdog()
+    var loggedDiscoveryStatus = ""
     let diagnosticLabel = NSTextField(wrappingLabelWithString: "等待手机诊断摘要")
     var diagnosticOnline = false
     var phoneRecoveryReady = false
@@ -80,7 +82,9 @@ final class Application: NSObject, NSApplicationDelegate {
             handoff.changed = { [weak self] message, data in self?.diagnostics?.event("handoff", data: data.merging(["message": message]) { _, new in new }) }
             control = try LocalServer(identity: identity.identity, port: UInt16(UserDefaults.standard.integer(forKey: "controlPort"))) { [weak self] r in guard let self else { return .json([:], status: 503) }; return try self.api(r) }
             discovery = MacDiscovery(identity: identity)
-            discovery?.changed = { [weak self] in self?.update() }
+            discovery?.changed = { [weak self] in self?.logDiscoveryStatus(); self?.update() }
+            control.trace = { [weak self] type, data in self?.diagnostics?.event(type, data: data) }
+            watchdog.start { [weak self] lagMs in self?.diagnostics?.event("mac_main_stall", data: ["lag_ms": lagMs]) }
             engine.changed = { [weak self] in self?.update() }
             for server in [control!] {
                 server.changed = { [weak self] in
@@ -96,6 +100,12 @@ final class Application: NSObject, NSApplicationDelegate {
             update()
         } catch { failure = error.localizedDescription; status.stringValue = "无法启动 Sound Link"; details.stringValue = failure }
         show()
+    }
+    /// BLE advertising state is what the phone's GATT lookup depends on; record transitions only.
+    func logDiscoveryStatus() {
+        guard let status = discovery?.status, status != loggedDiscoveryStatus else { return }
+        loggedDiscoveryStatus = status
+        diagnostics?.event("mac_discovery_status", data: ["status": status])
     }
     @objc func powerChanged(_ note: Notification) {
         let sleeping = note.name == NSWorkspace.willSleepNotification
@@ -507,7 +517,7 @@ final class Application: NSObject, NSApplicationDelegate {
     @objc func show() { window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc func quit() { NSApp.terminate(nil) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { show(); return true }
-    func applicationWillTerminate(_ note: Notification) { cancelManual(); handoff.cancel("Mac 退出"); hardware.cancel(); hardware.speakerGuard.stop(); diagnostics?.event("mac_exit", data: [:]); timer?.invalidate(); audioTimer?.invalidate(); control?.stop(); engine?.suspend(); discovery?.stop() }
+    func applicationWillTerminate(_ note: Notification) { cancelManual(); handoff.cancel("Mac 退出"); hardware.cancel(); hardware.speakerGuard.stop(); diagnostics?.event("mac_exit", data: [:]); watchdog.stop(); timer?.invalidate(); audioTimer?.invalidate(); control?.stop(); engine?.suspend(); discovery?.stop() }
 }
 if CommandLine.arguments.contains("--speaker-guard") { runSpeakerGuard(); exit(0) }
 let app = NSApplication.shared

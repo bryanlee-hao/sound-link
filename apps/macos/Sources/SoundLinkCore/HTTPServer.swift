@@ -52,12 +52,18 @@ public final class LocalServer {
     public private(set) var port: UInt16 = 0
     public var changed: (() -> Void)?
     public var failed: ((String) -> Void)?
+    /// Diagnostics sink: (event type, fields). Only abnormal connections and listener state changes.
+    public var trace: ((String, [String: Any]) -> Void)?
+    public static let maxConnections = 32
     private var listener: NWListener?
     private var connections: [UUID: NWConnection] = [:]
+    private var traces: [UUID: ConnectionTrace] = [:]
     private var eventWaiters: [UUID: HTTPResponse] = [:]
     private let handler: (HTTPRequest) throws -> HTTPResponse
-    public init(identity: SecIdentity? = nil, port: UInt16 = 0, handler: @escaping (HTTPRequest) throws -> HTTPResponse) throws {
+    private let clock: () -> TimeInterval
+    public init(identity: SecIdentity? = nil, port: UInt16 = 0, clock: @escaping () -> TimeInterval = { MonotonicTime.now }, handler: @escaping (HTTPRequest) throws -> HTTPResponse) throws {
         self.handler = handler
+        self.clock = clock
         let parameters: NWParameters
         if let identity {
             let tls = NWProtocolTLS.Options()
@@ -72,6 +78,7 @@ public final class LocalServer {
     public func start() {
         listener?.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
+            self.trace?("server_listener_state", ["state": "\(state)"])
             switch state {
             case .ready: self.port = self.listener?.port?.rawValue ?? 0; self.changed?()
             case .failed(let error): self.failed?(error.localizedDescription); self.stop()
@@ -83,7 +90,7 @@ public final class LocalServer {
     }
     public func stop() {
         listener?.cancel(); listener = nil; port = 0
-        for c in connections.values { c.cancel() }; connections.removeAll(); eventWaiters.removeAll()
+        for c in connections.values { c.cancel() }; connections.removeAll(); traces.removeAll(); eventWaiters.removeAll()
     }
     /// One send attempt to each currently connected event listener. No queue or delivery retry.
     public func publishEvent(_ response: HTTPResponse) {
@@ -92,14 +99,23 @@ public final class LocalServer {
         for id in ids { send(id, response) }
     }
     private func accept(_ connection: NWConnection) {
-        guard connections.count < 32 else { connection.cancel(); return }
+        guard connections.count < Self.maxConnections else {
+            trace?("server_connection", ["outcome": "rejected_capacity", "live": connections.count])
+            connection.cancel(); return
+        }
         let id = UUID(); connections[id] = connection
+        traces[id] = ConnectionTrace(acceptedAt: clock(), liveAtAccept: connections.count)
         connection.stateUpdateHandler = { [weak self] state in
-            if case .failed = state { self?.finish(id) }
-            if case .cancelled = state { self?.connections.removeValue(forKey: id) }
+            guard let self else { return }
+            switch state {
+            case .ready: self.traces[id] = self.traces[id]?.ready(at: self.clock())
+            case .failed(let error): self.finish(id, outcome: "failed", error: "\(error)")
+            case .cancelled: self.connections.removeValue(forKey: id); self.traces.removeValue(forKey: id)
+            default: break
+            }
         }
         connection.start(queue: .main)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in if self?.eventWaiters[id] == nil { self?.finish(id) } }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in if self?.eventWaiters[id] == nil { self?.finish(id, outcome: "idle_timeout") } }
         receive(id, Data())
     }
     private func receive(_ id: UUID, _ buffer: Data) {
@@ -109,6 +125,7 @@ public final class LocalServer {
             let next = buffer + (data ?? Data())
             do {
                 if let request = try HTTPParser.parse(next) {
+                    self.traces[id] = self.traces[id]?.request(at: self.clock(), path: request.path)
                     let response = try self.handler(request)
                     if response.waitForEvent {
                         self.eventWaiters[id] = response
@@ -119,22 +136,34 @@ public final class LocalServer {
                     } else { self.send(id, response) }
                     return
                 }
-                if complete || error != nil { self.finish(id) } else { self.receive(id, next) }
+                if let error { self.finish(id, outcome: "receive_error", error: "\(error)") }
+                else if complete { self.finish(id, outcome: "peer_closed") }
+                else { self.receive(id, next) }
             } catch {
                 let e = error as? LinkError ?? LinkError("BAD_REQUEST", "请求无效")
-                self.send(id, .json(["error": e.code, "message": e.message], status: 400))
+                self.send(id, .json(["error": e.code, "message": e.message], status: 400), outcome: "bad_request")
             }
         }
     }
-    private func send(_ id: UUID, _ response: HTTPResponse) {
+    private func send(_ id: UUID, _ response: HTTPResponse, outcome: String = "served") {
         guard let connection = connections[id] else { return }
         let description = response.status == 200 ? "OK" : "Error"
         var header = "HTTP/1.1 \(response.status) \(description)\r\nContent-Type: \(response.type)\r\nContent-Length: \(response.data.count)\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n"
         for (key, value) in response.extra { header += "\(key): \(value)\r\n" }
         header += "\r\n"
-        connection.send(content: Data(header.utf8) + response.data, completion: .contentProcessed { [weak self] _ in self?.finish(id) })
+        connection.send(content: Data(header.utf8) + response.data, completion: .contentProcessed { [weak self] error in
+            self?.finish(id, outcome: error == nil ? outcome : "send_error", error: error.map { "\($0)" })
+        })
     }
-    private func finish(_ id: UUID) { eventWaiters.removeValue(forKey: id); connections.removeValue(forKey: id)?.cancel() }
+    private func finish(_ id: UUID, outcome: String, error: String? = nil) {
+        eventWaiters.removeValue(forKey: id)
+        guard let connection = connections.removeValue(forKey: id) else { return }
+        if let record = traces.removeValue(forKey: id),
+           let report = record.report(outcome: outcome, error: error, now: clock(), live: connections.count) {
+            trace?("server_connection", report)
+        }
+        connection.cancel()
+    }
 }
 public enum LocalAddress {
     public static func candidates() -> [(String, String)] {
