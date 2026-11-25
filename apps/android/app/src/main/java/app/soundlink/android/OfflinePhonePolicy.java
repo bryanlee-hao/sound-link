@@ -131,10 +131,6 @@ final class OfflinePhonePolicy {
     return enabled;
   }
 
-  boolean allowsPrompt() {
-    return enabled && session && !blocked && !busy && !macProtected;
-  }
-
   boolean busy() {
     return busy;
   }

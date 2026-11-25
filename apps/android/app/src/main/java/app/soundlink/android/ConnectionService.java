@@ -11,18 +11,12 @@ import java.util.concurrent.*;
 import org.json.JSONObject;
 
 public final class ConnectionService extends Service {
+  private static final String STATUS_CHANNEL = "connection_status";
+  private static final String RETIRED_STATUS_CHANNEL = "connection";
   private ScheduledExecutorService worker;
   private PairingLifecycle.Events events;
   private PhoneObservation observer;
   private final OfflinePhonePolicy localPolicy = new OfflinePhonePolicy();
-  private final OfflineReconnectFlow promptFlow = new OfflineReconnectFlow();
-  private PowerManager.WakeLock promptWake;
-  private String promptDisplay = "";
-  private final BroadcastReceiver promptActions = new BroadcastReceiver() {
-    @Override public void onReceive(Context context, Intent intent) {
-      handlePromptAction(intent.getAction(), intent.getStringExtra("token"));
-    }
-  };
   private final android.content.SharedPreferences.OnSharedPreferenceChangeListener policyChanges =
       (prefs, key) -> {
         if (OfflineReconnectFlow.PREFERENCE.equals(key) || "handoff_enabled".equals(key)
@@ -48,7 +42,6 @@ public final class ConnectionService extends Service {
   private void bindLocalPolicy() {
     String binding = currentBinding();
     if (binding.equals(localBinding)) return;
-    if (promptFlow.waiting()) endPrompt("目标已改变");
     if (localPolicy.busy()) headphoneControl.close();
     localBinding = binding;
     boolean failed =
@@ -62,9 +55,9 @@ public final class ConnectionService extends Service {
     try {
       JSONObject value =
           new JSONObject()
-              .put("active", localPolicy.busy() || promptFlow.waiting())
+              .put("active", localPolicy.busy())
               .put("blocked", localPolicy.blocked())
-              .put("status", promptFlow.waiting() ? "等待用户选择是否连接耳机" : localPolicy.status())
+              .put("status", localPolicy.status())
               .put("recoveryToken", localPolicy.recoveryToken());
       String text = value.toString();
       if (text.equals(publishedLocal)) return true;
@@ -103,15 +96,13 @@ public final class ConnectionService extends Service {
     if (!authorized && localPolicy.busy()) headphoneControl.close();
     long now = SystemClock.elapsedRealtime();
     boolean online = lastAck > 0 && now - lastAck < 10000;
-    updatePrompt(sample, online, authorized, now);
     if (sample == null) return;
     boolean take = localPolicy.observe(sample, online, authorized,
-        headphoneControl.busy() || promptFlow.active(), now);
+        headphoneControl.busy(), now);
     if (take) {
       switch (offlineMode()) {
         case NEVER -> { /* The playback edge is still consumed; changing modes cannot replay it. */ }
-        case PROMPT -> beginPrompt(sample);
-        case AUTO -> connectOffline(sample, null);
+        case AUTO -> connectOffline(sample);
       }
     } else publishLocal();
     if (networkPaused) {
@@ -135,139 +126,18 @@ public final class ConnectionService extends Service {
     } catch (Exception e) { return false; }
   }
 
-  private void beginPrompt(JSONObject sample) {
-    if (!OfflineReconnectNotification.available(this)) {
-      HeadphoneControl.message(this, getString(R.string.offline_notifications_needed));
-      return;
-    }
-    String token = java.util.UUID.randomUUID().toString();
-    promptFlow.begin(token, localBinding, sample, SystemClock.elapsedRealtime());
-    localGeneration(); // Fence authenticated responses initiated before this decision window.
-    if (!publishLocal()) {
-      endPrompt("无法保存提示状态");
-      return;
-    }
-    try {
-      promptWake = getSystemService(PowerManager.class)
-          .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SoundLink:offline-choice");
-      promptWake.acquire(5500);
-      PhoneMuteGuard.begin(this, token, promptFlow.deadline() - SystemClock.elapsedRealtime());
-      showPrompt();
-      main.post(promptTick);
-    } catch (Exception e) {
-      endPrompt("无法发送连接提示");
-    }
-  }
-
-  private void showPrompt() {
-    boolean muted = PhoneMuteGuard.active() && getSystemService(android.media.AudioManager.class)
-        .isStreamMute(android.media.AudioManager.STREAM_MUSIC);
-    String display = promptFlow.waiting() + ":" + muted + ":"
-        + Math.max(0, (promptFlow.deadline() - SystemClock.elapsedRealtime() + 999) / 1000);
-    if (display.equals(promptDisplay)) return;
-    OfflineReconnectNotification.show(this, promptFlow, muted);
-    promptDisplay = display;
-  }
-
-  private final Runnable promptTick = new Runnable() {
-    @Override public void run() {
-      if (stopped || !promptFlow.active()) return;
-      evaluateLocal();
-      if (promptFlow.active()) main.postDelayed(this, 100);
-    }
-  };
-
-  private void updatePrompt(JSONObject sample, boolean online, boolean authorized, long now) {
-    if (!promptFlow.active()) return;
-    PhoneMuteGuard.respectUserUnmute(this);
-    if (promptFlow.waiting()) {
-      if (!promptFlow.valid(sample, currentBinding(), online,
-          authorized && localPolicy.allowsPrompt(), offlineMode(), now,
-          PhoneMuteGuard.muted(this, promptFlow.token()))
-          || !OfflineReconnectNotification.available(this)) {
-        endPrompt("提示已到期或状态已改变");
-        return;
-      }
-      if (headphoneControl.localRouteReady()) {
-        endPrompt("耳机已连接");
-        return;
-      }
-      if (promptFlow.routeChanged(PhoneMuteGuard.routeKey(this))
-          && !headphoneControl.targetRouteSelected()) {
-        endPrompt("音频输出已改变");
-        return;
-      }
-    } else if (now >= promptFlow.deadline()) {
-      // The connection executor owns cleanup after submission, including mute ownership.
-      headphoneControl.close();
-      return;
-    }
-    try { showPrompt(); }
-    catch (Exception e) {
-      if (promptFlow.waiting()) endPrompt("提示更新失败");
-      // A submitted connection keeps its bounded verification even if notifications are revoked.
-    }
-  }
-
-  private void handlePromptAction(String action, String token) {
-    if (stopped || !promptFlow.waiting() || !promptFlow.matches(token)) return;
-    // Refresh hardware/playback before accepting a user intent, not only the cached notification.
-    observer.refreshForHandoff();
-    evaluateLocal();
-    if (!promptFlow.waiting() || !promptFlow.matches(token)) return;
-    if (OfflineReconnectNotification.IGNORE.equals(action)) {
-      endPrompt("用户忽略连接提示");
-    } else if (OfflineReconnectNotification.CONNECT.equals(action)) {
-      JSONObject sample = PhoneObservation.wire(this);
-      if (sample == null || !"disconnected".equals(sample.optString("connection"))) return;
-      if (!promptFlow.accept(token, SystemClock.elapsedRealtime())) return;
-      releasePromptWake();
-      connectOffline(sample, token);
-    }
-  }
-
-  private void releasePromptWake() {
-    if (promptWake != null && promptWake.isHeld()) promptWake.release();
-    promptWake = null;
-  }
-
-  private void endPrompt(String reason) {
-    if (!promptFlow.active()) return;
-    String token = promptFlow.token();
-    promptFlow.clear();
-    promptDisplay = "";
-    main.removeCallbacks(promptTick);
-    releasePromptWake();
-    PhoneMuteGuard.release(this, token, reason);
-    OfflineReconnectNotification.clear(this);
-    localGeneration();
-    publishLocal();
-    Diagnostics.record(this, "离线连接提示结束", reason);
-  }
-
-  private void connectOffline(JSONObject sample, String promptToken) {
+  private void connectOffline(JSONObject sample) {
     localPolicy.begin();
     if (!publishLocal()) {
       localPolicy.finish(false, "无法保存消费记录");
-      endPrompt("无法保存消费记录");
       publishLocal();
       return;
     }
     localGeneration();
-    Diagnostics.event(this, "phone_local_begin",
-        promptToken == null ? "Mac 失联后手机新起播 · 自动接管" : "用户确认连接耳机",
+    Diagnostics.event(this, "phone_local_begin", "Mac 失联后手机新起播 · 自动接管",
         Diagnostics.fields("event", sample.optInt("event")), true);
-    long budget = promptToken == null ? OfflineReconnectFlow.CONNECT_MS
-        : Math.max(0, promptFlow.deadline() - SystemClock.elapsedRealtime());
-    headphoneControl.connectLocal(sample, promptToken, budget, (success, message) -> {
+    headphoneControl.connectLocal(sample, null, OfflineReconnectFlow.CONNECT_MS, (success, message) -> {
       localPolicy.finish(success, message);
-      if (promptToken != null) {
-        endPrompt(message);
-        if (!stopped && HeadphoneControl.ready(this)) {
-          try { OfflineReconnectNotification.result(this, success); }
-          catch (Exception ignored) { }
-        }
-      }
       localGeneration();
       publishLocal();
       if (!stopped) observer.refreshForHandoff();
@@ -406,20 +276,9 @@ public final class ConnectionService extends Service {
     super.onCreate();
     observer = new PhoneObservation(this, this::observationChanged);
     headphoneControl = new HeadphoneControl(this, this::requestFastPing, observer);
-    OfflineReconnectNotification.createChannel(this);
-    IntentFilter promptFilter = new IntentFilter();
-    promptFilter.addAction(OfflineReconnectNotification.CONNECT);
-    promptFilter.addAction(OfflineReconnectNotification.IGNORE);
-    promptFilter.addDataScheme("soundlink");
-    registerReceiver(promptActions, promptFilter, Context.RECEIVER_NOT_EXPORTED);
     Link.prefs(this).registerOnSharedPreferenceChangeListener(policyChanges);
     Diagnostics.service(this, serviceID, "create", "新服务实例");
-    getSystemService(NotificationManager.class)
-        .createNotificationChannel(
-            new NotificationChannel(
-                "connection",
-                getString(R.string.notification_channel),
-                NotificationManager.IMPORTANCE_LOW));
+    createStatusChannel();
     network =
         new ConnectivityManager.NetworkCallback() {
           @Override
@@ -470,6 +329,22 @@ public final class ConnectionService extends Service {
     getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(network);
   }
 
+  /**
+   * The connectedDevice foreground service must keep a notification, so it is kept out of the way:
+   * MIN importance (no status-bar icon, collapsed in the shade) and hidden on the lock screen.
+   * A new channel is used because an existing channel's importance is owned by the user.
+   */
+  private void createStatusChannel() {
+    NotificationManager manager = getSystemService(NotificationManager.class);
+    manager.deleteNotificationChannel(RETIRED_STATUS_CHANNEL);
+    NotificationChannel channel =
+        new NotificationChannel(
+            STATUS_CHANNEL, getString(R.string.notification_channel), NotificationManager.IMPORTANCE_MIN);
+    channel.setShowBadge(false);
+    channel.setLockscreenVisibility(Notification.VISIBILITY_SECRET);
+    manager.createNotificationChannel(channel);
+  }
+
   private Notification notification(String text) {
     PendingIntent open =
         PendingIntent.getActivity(
@@ -483,8 +358,12 @@ public final class ConnectionService extends Service {
             1,
             new Intent(this, ConnectionService.class).setAction("STOP"),
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-    return new Notification.Builder(this, "connection")
+    return new Notification.Builder(this, STATUS_CHANNEL)
         .setSmallIcon(R.drawable.ic_soundlink)
+        .setCategory(Notification.CATEGORY_SERVICE)
+        .setVisibility(Notification.VISIBILITY_SECRET)
+        .setShowWhen(false)
+        .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_DEFERRED)
         .setContentTitle("Sound Link")
         .setContentText(
             getString(
@@ -550,7 +429,8 @@ public final class ConnectionService extends Service {
     }
     BluetoothDevice device =
         intent == null ? null : intent.getParcelableExtra("device", BluetoothDevice.class);
-    if (("START".equals(action) || (intent != null && action == null)) && networkPaused)
+    String reason = intent == null ? null : intent.getStringExtra("reason");
+    if (NetworkRetry.resumeOnStart(intent != null, action, reason, networkPaused))
       worker.execute(
           () -> {
             resumeNetwork();
@@ -694,7 +574,6 @@ public final class ConnectionService extends Service {
         () -> {
           if (!stopped) {
             bindLocalPolicy();
-            if (promptFlow.waiting()) endPrompt("电脑连接已恢复");
             JSONObject local = PhoneObservation.wire(this);
             if (observation != null && local != null) {
               localPolicy.remote(
@@ -851,9 +730,6 @@ public final class ConnectionService extends Service {
     Diagnostics.service(this, serviceID, "destroy", stopReason);
     stopped = true;
     headphoneControl.close();
-    endPrompt("连接服务已停止");
-    OfflineReconnectNotification.clear(this);
-    unregisterReceiver(promptActions);
     Link.prefs(this).unregisterOnSharedPreferenceChangeListener(policyChanges);
     localPolicy.stop();
     publishLocal();

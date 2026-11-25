@@ -1,8 +1,13 @@
 package app.soundlink.android;
 
 import android.app.Application;
+import android.app.NotificationManager;
 
 public final class SoundLinkApplication extends Application {
+  private static final String RETIRED_PROMPT_CHANNEL = "offline_reconnect";
+  private static final String RETIRED_PROMPT_STATE = "offline_reconnect_prompt";
+  private static final int RETIRED_PROMPT_ID = 47;
+
   @Override
   public void onCreate() {
     super.onCreate();
@@ -15,12 +20,18 @@ public final class SoundLinkApplication extends Application {
             "enabled", HeadphoneControl.enabled(this), "auto_recovery", Recovery.enabled(this)),
         true);
     PhoneMuteGuard.recover(this, "应用启动恢复");
-    if (!OfflineReconnectFlow.PROMPT_ENABLED
-        && "prompt".equals(Link.prefs(this).getString(OfflineReconnectFlow.PREFERENCE, null))) {
+    if ("prompt".equals(Link.prefs(this).getString(OfflineReconnectFlow.PREFERENCE, null))) {
       Link.prefs(this).edit().putString(OfflineReconnectFlow.PREFERENCE, "auto").apply();
     }
-    OfflineReconnectNotification.createChannel(this);
-    OfflineReconnectNotification.clear(this);
+    removeRetiredNotifications();
+  }
+
+  /** The reconnect prompt was removed; drop its channel and any stale state from older builds. */
+  private void removeRetiredNotifications() {
+    NotificationManager manager = getSystemService(NotificationManager.class);
+    manager.cancel(RETIRED_PROMPT_ID);
+    manager.deleteNotificationChannel(RETIRED_PROMPT_CHANNEL);
+    Link.prefs(this).edit().remove(RETIRED_PROMPT_STATE).apply();
   }
 
   @Override

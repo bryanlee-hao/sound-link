@@ -1,26 +1,16 @@
 package app.soundlink.android
 
 import android.Manifest
-import android.app.NotificationManager
-import android.app.Notification
-import android.app.PendingIntent
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.media.AudioManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.SystemClock
 import androidx.test.platform.app.InstrumentationRegistry
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
-import org.json.JSONObject
 import org.junit.*
 import org.junit.Assert.*
 
-/** Hardware-independent audio/notification integration; only on a disposable emulator. */
+/** Hardware-independent audio integration; only on a disposable emulator. */
 class OfflineReconnectTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
@@ -41,8 +31,6 @@ class OfflineReconnectTest {
             originalMuted = audio.isStreamMute(AudioManager.STREAM_MUSIC)
             audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
             audio.setStreamVolume(AudioManager.STREAM_MUSIC, 5, 0)
-            OfflineReconnectNotification.createChannel(context)
-            OfflineReconnectNotification.clear(context)
         }
     }
 
@@ -50,7 +38,6 @@ class OfflineReconnectTest {
         if (!fixtureAllowed) return
         main {
             PhoneMuteGuard.recover(context, "Test cleanup")
-            OfflineReconnectNotification.clear(context)
             audio.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
             audio.adjustStreamVolume(AudioManager.STREAM_MUSIC,
                 if (originalMuted) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE, 0)
@@ -141,78 +128,5 @@ class OfflineReconnectTest {
             track.release()
             main { observer.stop() }
         }
-    }
-
-    @Test fun notificationActionsAndDismissalCarryTheirOwnImmutableTokens() {
-        val events = LinkedBlockingQueue<Intent>()
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context, intent: Intent) { events.add(intent) }
-        }
-        val filter = IntentFilter().apply {
-            addAction(OfflineReconnectNotification.CONNECT)
-            addAction(OfflineReconnectNotification.IGNORE)
-            addDataScheme("soundlink")
-        }
-        context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        try {
-            val sample = JSONObject().put("instance", "test").put("targetRevision", 1)
-            val flow = OfflineReconnectFlow()
-            flow.begin("first", "fixture", sample, SystemClock.elapsedRealtime())
-            main { OfflineReconnectNotification.show(context, flow, true) }
-            val manager = context.getSystemService(NotificationManager::class.java)
-            val first = manager.activeNotifications.single { it.id == OfflineReconnectNotification.ID }.notification
-            assertFalse(first.extras.containsKey(XiaomiIslandPayload.PARAM))
-            assertFalse(first.extras.containsKey(XiaomiIslandPayload.ACTIONS))
-            assertFalse(first.extras.containsKey(XiaomiIslandPayload.PICS))
-            assertEquals(2, first.actions.size)
-            assertTrue(first.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString().contains("5"))
-            first.actions[1].actionIntent.send()
-            assertEquals("first", events.poll(2, TimeUnit.SECONDS)?.getStringExtra("token"))
-            flow.clear()
-            flow.begin("second", "fixture", sample, SystemClock.elapsedRealtime())
-            main { OfflineReconnectNotification.show(context, flow, true) }
-            first.deleteIntent.send()
-            val deleted = events.poll(2, TimeUnit.SECONDS)
-            assertEquals(OfflineReconnectNotification.IGNORE, deleted?.action)
-            assertEquals("first", deleted?.getStringExtra("token"))
-            assertFalse(flow.matches(deleted?.getStringExtra("token")))
-        } finally {
-            context.unregisterReceiver(receiver)
-        }
-    }
-
-    @Test fun islandReusesFallbackActionsAndLeavesOriginalNotificationUntouched() {
-        val ignore = PendingIntent.getBroadcast(context, 101,
-            OfflineReconnectNotification.action(context, OfflineReconnectNotification.IGNORE, "island-test"),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val connect = PendingIntent.getBroadcast(context, 102,
-            OfflineReconnectNotification.action(context, OfflineReconnectNotification.CONNECT, "island-test"),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val standard = Notification.Builder(context, OfflineReconnectNotification.CHANNEL)
-            .setSmallIcon(R.drawable.ic_soundlink).setContentTitle("Connect?").setContentText("5 seconds")
-            .setTimeoutAfter(5000).setDeleteIntent(ignore)
-            .addAction(Notification.Action.Builder(null, "Ignore", ignore).build())
-            .addAction(Notification.Action.Builder(null, "Connect", connect).build()).build()
-        val island = standard.clone()
-        XiaomiIsland.decorate(context, island, 3, "Connect?", "Muted\n5 seconds", true, 5000, true)
-        assertFalse(standard.extras.containsKey(XiaomiIslandPayload.PARAM))
-        assertTrue(island.extras.containsKey(XiaomiIslandPayload.PARAM))
-        assertEquals(standard.deleteIntent, island.deleteIntent)
-        assertEquals(standard.timeoutAfter, island.timeoutAfter)
-        val actions = island.extras.getBundle(XiaomiIslandPayload.ACTIONS)!!
-        assertEquals(ignore, actions.getParcelable(XiaomiIslandPayload.IGNORE, Notification.Action::class.java)!!.actionIntent)
-        assertEquals(connect, actions.getParcelable(XiaomiIslandPayload.CONNECT, Notification.Action::class.java)!!.actionIntent)
-        val unsupported = standard.clone()
-        XiaomiIsland.decorate(context, unsupported, 0, "Connect?", "Muted", true, 5000, true)
-        assertFalse(unsupported.extras.containsKey(XiaomiIslandPayload.PARAM))
-        val invalid = standard.clone()
-        XiaomiIsland.decorate(context, invalid, 3, "Connect?", "Muted", true, 0, true)
-        assertFalse(invalid.extras.containsKey(XiaomiIslandPayload.PARAM))
-        val connecting = Notification.Builder(context, OfflineReconnectNotification.CHANNEL)
-            .setSmallIcon(R.drawable.ic_soundlink).setContentTitle("Connecting").build()
-        XiaomiIsland.decorate(context, connecting, 3, "Connecting", "Muted", false, 5000, false)
-        assertFalse(connecting.extras.containsKey(XiaomiIslandPayload.ACTIONS))
-        assertFalse(JSONObject(connecting.extras.getString(XiaomiIslandPayload.PARAM)!!)
-            .getJSONObject("param_v2").has("textButton"))
     }
 }

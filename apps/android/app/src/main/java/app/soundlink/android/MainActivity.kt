@@ -57,7 +57,8 @@ private data class Prompt(
 class MainActivity : ComponentActivity() {
     private val ui = Handler(Looper.getMainLooper())
     private val work = Executors.newSingleThreadExecutor()
-    private var page by mutableStateOf("home")
+    private var history by mutableStateOf(PageHistory())
+    private val page get() = history.page
     private var revision by mutableIntStateOf(0)
     private var pairing by mutableStateOf("")
     private var updateStatus by mutableStateOf("")
@@ -89,7 +90,7 @@ class MainActivity : ComponentActivity() {
 
     private fun refresh() {
         revision++
-        if (!prefs.contains("peer") && page == "onboarding") page = "home"
+        if (!prefs.contains("peer") && page == "onboarding") navigate("home")
         val target = json("observe_target")
         if (prompt?.targetRevision?.let { !prefs.contains("peer") || it != target.optInt("revision") } == true) prompt = null
         if (active) {
@@ -113,25 +114,19 @@ class MainActivity : ComponentActivity() {
         prompt = Prompt("Sound Link", text)
     }
 
-    private fun navigate(destination: String) {
+    /** `resetting` marks app-driven jumps (e.g. after pairing) whose only parent is home. */
+    private fun navigate(destination: String, resetting: Boolean = false) =
+        show(history.navigate(destination, resetting))
+
+    /** Back returns along the path the user actually came through. */
+    private fun back() = show(history.back())
+
+    private fun show(next: PageHistory) {
+        val destination = next.page
         if (destination == "onboarding" && page != destination) shownSetupStep = null
         if (destination != "onboarding" && prompt?.setupStep != null) prompt = null
-        page = destination
+        history = next
         if (destination == "onboarding") ui.post { if (active) advanceSetup() }
-    }
-
-    private fun back() {
-        page =
-            when (page) {
-                "advanced" -> "diagnostics"
-                "headphones" ->
-                    if (prefs.getBoolean("setup_pending", false)) "onboarding" else "settings"
-                "settings",
-                "device",
-                "onboarding",
-                "download" -> "home"
-                else -> "settings"
-            }
     }
 
     private fun fresh(): Boolean {
@@ -156,11 +151,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Link.clientID(this)
-        page =
+        history = PageHistory.restore(
             savedInstanceState?.getString("page")
-                ?: if (prefs.getBoolean("setup_pending", false)) "onboarding" else "home"
-        if (intent.getBooleanExtra("offline_prompt", false)) page = "home"
-        if (intent.getBooleanExtra("notification_preview", false)) page = "diagnostics"
+                ?: if (prefs.getBoolean("setup_pending", false)) "onboarding" else PageHistory.HOME,
+            savedInstanceState?.getStringArrayList("page_stack"),
+        )
         shownSetupStep = savedInstanceState?.getString("shown_setup_step")?.let { name ->
             runCatching { SetupStep.valueOf(name) }.getOrNull()
         }
@@ -170,6 +165,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(out: Bundle) {
         out.putString("page", page)
+        out.putStringArrayList("page_stack", ArrayList(history.stack))
         if (prompt == null) out.putString("shown_setup_step", shownSetupStep?.name)
         super.onSaveInstanceState(out)
     }
@@ -182,7 +178,7 @@ class MainActivity : ComponentActivity() {
         Diagnostics.record(this, "界面可见", "Compose MainActivity 恢复")
         if (Recovery.enabled(this)) {
             Recovery.arm(this)
-            Recovery.wake(this, "打开 App 恢复", null)
+            Recovery.wake(this, NetworkRetry.APP_OPEN_REASON, null)
         }
         if (prefs.getBoolean("connect_after_pair", false) && prefs.contains("peer")) connect()
     }
@@ -283,7 +279,6 @@ class MainActivity : ComponentActivity() {
                             ),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        OfflineReconnectCard()
                         when (page) {
                             "home" -> Home()
                             "settings" -> SettingsPage()
@@ -650,11 +645,6 @@ class MainActivity : ComponentActivity() {
                 value = s(appearanceLabel(prefs.getString("interface_appearance", "system") ?: "system"))) { appearance() }
         }
         Hint(s(R.string.offline_reconnect_help))
-        if (offlineMode() == OfflineReconnectFlow.Mode.PROMPT &&
-            !OfflineReconnectNotification.available(this)) {
-            Hint(s(R.string.offline_notifications_needed))
-            Action(R.string.offline_enable_notifications) { notificationSettings() }
-        }
         SettingsGroup(R.string.group_support) {
             SettingsRow(R.string.reset_connections, R.drawable.ic_recovery) {
                 prompt = Prompt(s(R.string.reset_connections_title), s(R.string.reset_connections_notice),
@@ -684,52 +674,18 @@ class MainActivity : ComponentActivity() {
 
     private fun offlineModeLabel(mode: OfflineReconnectFlow.Mode) = when (mode) {
         OfflineReconnectFlow.Mode.NEVER -> R.string.offline_never
-        OfflineReconnectFlow.Mode.PROMPT -> if (mode.available()) R.string.offline_prompt else R.string.offline_prompt_disabled
         OfflineReconnectFlow.Mode.AUTO -> R.string.offline_auto
     }
 
     private fun offlineReconnect() {
         prompt = Prompt(s(R.string.offline_reconnect), s(R.string.offline_reconnect_choices),
             selected = s(offlineModeLabel(offlineMode())),
-            disabledChoices = OfflineReconnectFlow.Mode.entries.filterNot { it.available() }
-                .map { s(offlineModeLabel(it)) }.toSet(),
             choices = OfflineReconnectFlow.Mode.entries.map { mode ->
                 s(offlineModeLabel(mode)) to {
-                    if (mode.available()) {
-                        prefs.edit().putString(OfflineReconnectFlow.PREFERENCE, mode.value()).apply()
-                        refresh()
-                    }
+                    prefs.edit().putString(OfflineReconnectFlow.PREFERENCE, mode.value()).apply()
+                    refresh()
                 }
             })
-    }
-
-    private fun notificationSettings() {
-        OfflineReconnectNotification.createChannel(this)
-        startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
-            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-            .putExtra(Settings.EXTRA_CHANNEL_ID, OfflineReconnectNotification.CHANNEL))
-    }
-
-    @Composable
-    private fun OfflineReconnectCard() {
-        revision
-        val state = json(OfflineReconnectNotification.STATE)
-        val remaining = state.optLong("deadline") - SystemClock.elapsedRealtime()
-        if (!prefs.getBoolean("running", false) || remaining <= 0 || state.optString("token").isEmpty()) return
-        Panel {
-            Text(state.optString("title"), fontWeight = FontWeight.SemiBold)
-            Hint(state.optString("detail"))
-            if (state.optBoolean("waiting")) {
-                Action(R.string.offline_connect, primary = true) {
-                    sendBroadcast(OfflineReconnectNotification.action(this@MainActivity,
-                        OfflineReconnectNotification.CONNECT, state.optString("token")))
-                }
-                Action(R.string.offline_ignore) {
-                    sendBroadcast(OfflineReconnectNotification.action(this@MainActivity,
-                        OfflineReconnectNotification.IGNORE, state.optString("token")))
-                }
-            }
-        }
     }
 
     @Composable
@@ -891,7 +847,7 @@ class MainActivity : ComponentActivity() {
                 if (step == SetupStep.COMPLETE) { prefs.edit().remove("setup_pending").apply(); navigate("home") }
                 else { shownSetupStep = null; advanceSetup() }
             }
-            Action(R.string.not_now) { navigate("home") }
+            Action(R.string.not_now) { back() }
         }
     }
 
@@ -937,22 +893,6 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun DiagnosticsPage() {
         revision // Subscribe this skippable page to background preference updates.
-        if (OfflineReconnectFlow.PROMPT_ENABLED) Panel {
-            Text(s(R.string.notification_preview_label), fontSize = 20.sp)
-            Hint(s(R.string.notification_preview_help))
-            Action(R.string.notification_preview_start, !NotificationPreview.running(), true) {
-                if (OfflineReconnectNotification.available(this@MainActivity)) {
-                    NotificationPreview.start(this@MainActivity)
-                    refresh()
-                } else {
-                    prompt = Prompt(s(R.string.notification_preview_label), s(R.string.offline_notifications_needed),
-                        s(R.string.offline_enable_notifications), { notificationSettings() })
-                }
-            }
-            if (NotificationPreview.status() != 0) Hint(s(NotificationPreview.status()))
-            Action(R.string.offline_enable_notifications) { notificationSettings() }
-            Hint(s(R.string.notification_banner_help))
-        }
         Panel {
             Text(s(R.string.logs), fontSize = 20.sp)
             Hint(s(R.string.recording))
@@ -1233,7 +1173,7 @@ class MainActivity : ComponentActivity() {
                             result.optString("pairing_id", request),
                         )
                         pairing = ""
-                        navigate("onboarding")
+                        navigate("onboarding", resetting = true)
                         if (active) connect()
                         refresh()
                     } else {

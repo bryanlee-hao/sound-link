@@ -14,4 +14,4 @@ apps/android/gradlew -p apps/android assembleDebug testDebugUnitTest lintDebug
 
 `src/test` 为本机单元测试；`src/androidTest` 为仪器与实机测试。仪器测试会操作界面、通知或应用状态，应使用专用测试设备。Gradle connected tests 可能重装应用，运行前确认测试设备和应用身份。
 
-小米超级岛为可选能力：未配置或未获厂商授权时保留普通通知。通过 `SOUNDLINK_XIAOMI_APP_ID` 或 Gradle 属性 `soundlink.xiaomiAppId` 提供自己的 App ID；不在源码中保存厂商账号凭据。
+离线“提示重连”通知与小米超级岛暂不实现，相关代码已移除；离线时只提供“不接管”和“自动重连”。`SOUNDLINK_XIAOMI_APP_ID` / `soundlink.xiaomiAppId` 构建配置暂时保留，当前没有功能使用；不在源码中保存厂商账号凭据。

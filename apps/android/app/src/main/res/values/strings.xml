@@ -191,50 +191,9 @@
     <string name="reset_connections_incomplete">Local connections were reset, but some Bluetooth companion authorizations could not be removed. Tap Reset Connections to retry.</string>
     <string name="offline_reconnect">Connect Headphones When Mac Is Offline</string>
     <string name="offline_never">Never</string>
-    <string name="offline_prompt">Ask to reconnect</string>
-    <string name="offline_prompt_disabled">Ask to reconnect (unavailable)</string>
     <string name="offline_auto">Reconnect automatically</string>
     <string name="offline_reconnect_help">Applies when playback starts on this phone after losing the Mac connection. Automatic Switching must be enabled on both devices. Pausing the device connection also pauses this feature.</string>
-    <string name="offline_reconnect_choices">Never: leave audio unchanged.\nAsk to reconnect: temporarily unavailable.\nReconnect automatically (default): connect when eligible playback starts.</string>
-    <string name="offline_notifications_needed">Enable reconnect notifications to receive prompts. Without notifications, Sound Link will not mute audio or reconnect automatically in this mode.</string>
-    <string name="offline_enable_notifications">Notification settings</string>
-    <string name="offline_notification_channel">Headphone reconnection</string>
-    <string name="notification_preview_label">Reconnect Notification Test</string>
-    <string name="notification_preview_start">Test Reconnect Notification</string>
-    <string name="notification_preview_help">Sends after 3 seconds, so you can return to the home screen first. The notification uses the real reconnect layout and lasts 5 seconds. Test buttons confirm delivery without connecting headphones or muting audio.</string>
-    <string name="notification_banner_help">If the notification only appears in the notification center, check floating notification or banner settings for Sound Link and Headphone reconnection. Do Not Disturb and other system settings may also suppress banners.</string>
-    <string name="notification_preview_scheduled">Sending in 3 seconds. Watch for the notification banner.</string>
-    <string name="notification_preview_sent">Sent. Waiting for a button press or the countdown to finish.</string>
-    <string name="notification_preview_connected">Connect received. Test finished without connecting headphones.</string>
-    <string name="notification_preview_ignored">Ignore or dismissal received. Test finished.</string>
-    <string name="notification_preview_timeout">The 5-second countdown ended and the test notification closed.</string>
-    <string name="notification_preview_busy">A headphone reconnect is in progress. Try the test afterwards.</string>
-    <string name="notification_preview_failed">Could not send the test notification. Check notification settings and try again.</string>
-    <string name="offline_prompt_title">Connect %1$s?</string>
-    <string name="offline_connecting_title">Connecting %1$s…</string>
-    <plurals name="offline_wait_muted">
-        <item quantity="one">Mac connection lost. Media temporarily muted.\nSpeaker playback resumes in %1$d second.</item>
-        <item quantity="other">Mac connection lost. Media temporarily muted.\nSpeaker playback resumes in %1$d seconds.</item>
-    </plurals>
-    <plurals name="offline_wait_unmuted">
-        <item quantity="one">Mac connection lost.\nPrompt closes in %1$d second.</item>
-        <item quantity="other">Mac connection lost.\nPrompt closes in %1$d seconds.</item>
-    </plurals>
-    <plurals name="offline_connecting_muted">
-        <item quantity="one">Media temporarily muted. Waiting up to %1$d more second.</item>
-        <item quantity="other">Media temporarily muted. Waiting up to %1$d more seconds.</item>
-    </plurals>
-    <plurals name="offline_connecting_unmuted">
-        <item quantity="one">Waiting up to %1$d more second.</item>
-        <item quantity="other">Waiting up to %1$d more seconds.</item>
-    </plurals>
-    <string name="offline_ignore">Ignore</string>
-    <string name="offline_connect">Connect</string>
-    <string name="offline_success">Headphones connected</string>
-    <string name="offline_failed">Could not connect headphones</string>
-    <string name="offline_result_detail">Audio follows the current output.</string>
-    <string name="island_waiting">Connect?</string>
-    <string name="island_connecting">Connecting</string>
+    <string name="offline_reconnect_choices">Never: leave audio unchanged.\nReconnect automatically (default): connect when eligible playback starts.</string>
     <string name="development_companion">Install the companion Mac development build, then scan its pairing code.</string>
     <string name="home_here">Connected here</string>
     <string name="linked_with">Linked with %1$s</string>

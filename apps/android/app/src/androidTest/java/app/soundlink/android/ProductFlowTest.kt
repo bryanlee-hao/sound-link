@@ -77,7 +77,7 @@ class ProductFlowTest {
         click("Settings")
         compose.onNodeWithText("Reconnect automatically").assertExists()
         click(context.getString(R.string.offline_reconnect))
-        compose.onNodeWithText(context.getString(R.string.offline_prompt_disabled)).assertIsNotEnabled()
+        compose.onNodeWithText("Ask to reconnect", substring = true).assertDoesNotExist()
         click("Never")
         assertEquals("never", Link.prefs(context).getString(OfflineReconnectFlow.PREFERENCE, ""))
         scenario!!.recreate()

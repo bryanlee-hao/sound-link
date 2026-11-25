@@ -17,9 +17,8 @@ All code is in package `app.soundlink.android` under `app/src/main/java/app/soun
 | Connection / transport | `ConnectionService` (connectedDevice foreground service), `Link`, `PairingLifecycle`, `MacCompanionService` |
 | Discovery | `BleDiscovery`, `DiscoveryProtocol`, `DiscoveryReceiver` |
 | Observation / handoff | `PhoneObservation`, `PlaybackEdges`, `HandoffCommand`, `HeadphoneControl`, `HeadphoneMatch`, `HeadphoneSelection`, `PhonePause` |
-| Offline policy / recovery | `OfflinePhonePolicy`, `OfflineReconnectFlow`, `OfflineReconnectNotification`, `Recovery*`, `MuteLease`, `PhoneMuteGuard`, `MuteRecoveryReceiver` |
+| Offline policy / recovery | `OfflinePhonePolicy`, `OfflineReconnectFlow`, `NetworkRetry`, `Recovery*`, `MuteLease`, `PhoneMuteGuard`, `MuteRecoveryReceiver` |
 | Diagnostics | `Diagnostic*`, `DiagnosticsProvider` |
-| Optional vendor | `XiaomiIsland`, `XiaomiIslandPayload` |
 | Resources | `res/values/strings.xml` (EN) + `res/values-zh/strings.xml` (ZH) |
 
 Tests: `app/src/test` = local JVM unit tests (JUnit 4 + `org.json`); `app/src/androidTest` = instrumented/live-device tests. Protocol fixtures from `packages/protocol/fixtures/` are on the unit-test resource path.
