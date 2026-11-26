@@ -213,7 +213,7 @@ final class PhoneObservation {
         // Mute/route reconfiguration gaps are not a user starting new playback. A provisional
         // pre-mute must not stop the sustain check it is waiting for.
         if ((!PhoneMuteGuard.active() || PhoneMuteGuard.provisional()) && !(music && usages.isEmpty()))
-          edges.update(usages, SystemClock.elapsedRealtime());
+          edges.update(usages, music, SystemClock.elapsedRealtime());
         if (edges.event != previousEvent) eventElapsed = SystemClock.elapsedRealtime();
         if (edges.pending() && !wasPending)
           main.postDelayed(sustainCheck,

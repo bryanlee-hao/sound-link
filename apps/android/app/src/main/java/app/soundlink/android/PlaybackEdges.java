@@ -3,9 +3,8 @@ package app.soundlink.android;
 import java.util.*;
 
 /**
- * Aggregate anonymous playback edges; this cannot identify two players with equal usage counts. A
- * rise in media/game playback becomes an event only after it is sustained, so short in-app sounds
- * and autoplay previews do not count as a user starting playback.
+ * Aggregate anonymous playback edges. A media/game count rise or a music-stream resume must be
+ * sustained to qualify. Equal-count player replacements can still be invisible during playback.
  */
 final class PlaybackEdges {
   /**
@@ -18,10 +17,11 @@ final class PlaybackEdges {
   static final long SUSTAIN_CHECK_MARGIN_MS = 30;
   private final Set<Integer> mediaUsages;
   private final long sustainMs;
-  private Map<Integer, Integer> previous = new HashMap<>();
-  private boolean initialized;
+  private int previousMediaCount;
+  private boolean initialized, previousMusicActive;
   private long pendingSince = -1;
   private int pendingFloor;
+  private boolean pendingResume;
   int event;
   boolean media;
 
@@ -36,31 +36,29 @@ final class PlaybackEdges {
 
   void resetBaseline() {
     initialized = false;
+    previousMusicActive = false;
     media = false;
     pendingSince = -1;
   }
 
-  void update(Map<Integer, Integer> usages, long nowMs) {
-    boolean newMedia = false;
-    for (Map.Entry<Integer, Integer> usage : usages.entrySet()) {
-      if (usage.getValue() > previous.getOrDefault(usage.getKey(), 0)) {
-        newMedia |= mediaUsages.contains(usage.getKey());
-      }
-    }
+  void update(Map<Integer, Integer> usages, boolean musicActive, long nowMs) {
     int mediaCount = mediaCount(usages);
-    if (initialized && newMedia && pendingSince < 0) {
+    boolean countRose = mediaCount > previousMediaCount;
+    boolean resumed = !previousMusicActive && musicActive && mediaCount > 0;
+    if (initialized && pendingSince < 0 && (countRose || resumed)) {
       pendingSince = nowMs;
-      pendingFloor = mediaCount(previous);
+      pendingResume = !countRose;
+      pendingFloor = pendingResume ? 0 : previousMediaCount;
     }
-    // The new player must still be running above the pre-rise count when the threshold passes.
-    if (pendingSince >= 0 && mediaCount <= pendingFloor) pendingSince = -1;
+    if (mediaCount <= pendingFloor || (pendingResume && !musicActive)) pendingSince = -1;
     if (pendingSince >= 0 && nowMs - pendingSince >= sustainMs) {
       event++;
       media = true;
       pendingSince = -1;
     }
     initialized = true;
-    previous = new HashMap<>(usages);
+    previousMediaCount = mediaCount;
+    previousMusicActive = musicActive;
     if (mediaCount == 0) media = false;
   }
 
@@ -77,7 +75,7 @@ final class PlaybackEdges {
     return current;
   }
 
-  /** A media rise is running but has not yet been sustained long enough to be an event. */
+  /** A count rise or resume is waiting for its sustain check. */
   boolean pending() {
     return pendingSince >= 0;
   }

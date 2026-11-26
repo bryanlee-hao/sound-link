@@ -30,15 +30,22 @@ public final class HandoffEngine {
     private var seen = Set<String>()
     private var cooldown: TimeInterval = 0
     private var routeProven = false
-    private var latest: [(String, Int)] = []
+    private var latest: [String: Int] = [:]
     private var consumedThrough: [String: Int] = [:]
     private func remember(_ o: ObservationEngine) {
         observation = o
-        latest = [("\(o.target.revision)|mac|\(o.mac.instance)", o.mac.event), ("\(o.target.revision)|phone|\(o.phone.instance)", o.phone.event)]
+        latest = ["\(o.target.revision)|mac|\(o.mac.instance)": o.mac.event, "\(o.target.revision)|phone|\(o.phone.instance)": o.phone.event]
     }
-    private func consumeObserved() {
-        for (key, event) in latest { consumedThrough[key] = max(consumedThrough[key] ?? -1, event) }
-        if consumedThrough.count > 64 { consumedThrough = Dictionary(uniqueKeysWithValues: latest) }
+    private func consumeObserved(afterRouteProof t: Transaction? = nil) {
+        var events = latest
+        if let t, let direction = observation?.actionCandidate, direction != t.destination {
+            let source = direction == "mac" ? t.mac : t.phone
+            let key = "\(t.target.revision)|\(direction)|\(source.instance)"
+            // Leave a qualifying reverse start available to the next tick.
+            if let event = events[key] { events[key] = min(event, source.event) }
+        }
+        consumedThrough.merge(events, uniquingKeysWith: max)
+        if consumedThrough.count > 64 { consumedThrough = consumedThrough.filter { latest[$0.key] != nil } }
     }
     private var pauseUntil: TimeInterval = 0
     public private(set) var macReadOnly = false
@@ -175,7 +182,7 @@ public final class HandoffEngine {
     public func valid(_ id: String) -> Bool { enabled && transaction?.id == id && clock() < (transaction?.deadline ?? 0) }
     public func connected(_ id: String) {
         guard valid(id), let t = transaction, phase.hasPrefix("connecting") else { return }
-        routeProven = true; consumeObserved()
+        routeProven = true; consumeObserved(afterRouteProof: t)
         pauseUntil = min(t.deadline, clock() + 5)
         phase = t.destination == "phone" ? "pausing_mac" : "pausing_phone"
         report(t.destination == "phone" ? "手机已接管 · 尽力暂停 Mac" : "Mac 已接管 · 尽力暂停手机")
@@ -188,7 +195,8 @@ public final class HandoffEngine {
             observation?.suspendOfflineUse(message, generation: t.generation)
         }
         lastOutcome = routeProven ? "succeeded" : "failed"
-        if consume { consumeObserved() }; phase = "finished"; report(message); transaction = nil; macAction = nil; macPause = nil; cooldown = routeProven ? 0 : clock() + 10
+        if consume { consumeObserved(afterRouteProof: routeProven ? transaction : nil) }
+        phase = "finished"; report(message); transaction = nil; macAction = nil; macPause = nil; cooldown = routeProven ? 0 : clock() + 10
     }
     public var object: [String: Any] {
         var result: [String: Any] = ["enabled": enabled, "status": status, "history": history, "phoneReady": phoneReady, "phase": phase, "lastOutcome": lastOutcome, "cooldown": clock() < cooldown]

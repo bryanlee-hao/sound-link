@@ -176,6 +176,71 @@ final class HandoffTests: XCTestCase {
         XCTAssertNil(h.transaction)
     }
 
+    private func phoneResumesDuringMacConnection() throws -> HandoffEngine.Transaction {
+        o.mac.connection = "disconnected"; phone.connection = "connected"; sync()
+        o.mac.event += 1; sync()
+        let t = try XCTUnwrap(h.takeMacAction())
+        o.mac.connection = "connected"; phone.connection = "disconnected"; phoneStarts()
+        XCTAssertEqual(h.phase, "connecting_mac")
+        XCTAssertEqual(o.actionCandidate, "phone")
+        XCTAssertFalse(h.macCanMutate(t.id, observation: o))
+        return t
+    }
+
+    private func macStartsDuringPhoneConnection() throws -> HandoffEngine.Transaction {
+        phoneStarts()
+        let t = try XCTUnwrap(h.transaction)
+        phone.connection = "connected"; o.mac.connection = "disconnected"
+        o.mac.event += 1; sync()
+        XCTAssertEqual(h.phase, "connecting_phone")
+        XCTAssertEqual(o.actionCandidate, "mac")
+        return t
+    }
+
+    func testPhoneResumeDuringMacConnectionSurvivesRouteProof() throws {
+        let t = try phoneResumesDuringMacConnection()
+        h.macVerified(t.id, observation: o)
+        XCTAssertNil(h.object["command"])
+        h.tick(o, available: true)
+        XCTAssertEqual(h.transaction?.destination, "phone")
+        XCTAssertEqual(h.transaction?.phone.event, phone.event)
+    }
+
+    func testMacStartDuringPhoneConnectionSupersedesOldPauseAfterProof() throws {
+        let t = try macStartsDuringPhoneConnection()
+        h.receive(["ready": true, "revision": t.target.revision, "result": ["id": t.id,
+            "revision": t.target.revision, "stage": "connected", "routeVerified": true]], observation: o)
+        h.tick(o, available: true)
+        XCTAssertNil(h.takeMacPause())
+        let reverse = try XCTUnwrap(h.takeMacAction())
+        XCTAssertEqual(reverse.destination, "mac")
+        XCTAssertEqual(reverse.mac.event, o.mac.event)
+    }
+
+    func testMacTimeoutConsumesPhoneResumeDuringConnection() throws {
+        let t = try phoneResumesDuringMacConnection()
+        // Keep the reverse event fresh at the deadline.
+        now = t.deadline - 1; phoneStarts()
+        now = t.deadline; h.tick(o, available: true)
+        XCTAssertEqual(h.lastOutcome, "failed")
+        let timeout = h.status
+        XCTAssertEqual(o.actionCandidate, "phone")
+        h.tick(o, available: true)
+        XCTAssertNil(h.transaction)
+        XCTAssertEqual(h.status, timeout) // Already consumed, even before the cooldown check.
+    }
+
+    func testPhoneFailureConsumesMacStartDuringConnection() throws {
+        let t = try macStartsDuringPhoneConnection()
+        h.receive(["ready": true, "revision": t.target.revision, "result": ["id": t.id,
+            "revision": t.target.revision, "stage": "failed"]], observation: o)
+        XCTAssertEqual(h.lastOutcome, "failed")
+        let failure = h.status
+        h.tick(o, available: true)
+        XCTAssertNil(h.transaction)
+        XCTAssertEqual(h.status, failure)
+    }
+
     func testNewReverseIntentDoesNotWaitForBestEffortPause() throws {
         phoneStarts(); let first = try XCTUnwrap(h.transaction)
         phone.connection = "connected"; o.mac.connection = "disconnected"; sync()

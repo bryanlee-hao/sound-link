@@ -10,14 +10,14 @@ public class PlaybackEdgesTest {
 
   /** Repeats the same sample long enough to pass the sustain threshold. */
   private void sustain(PlaybackEdges e, Map<Integer, Integer> usages) {
-    e.update(usages, now);
+    e.update(usages, false, now);
     now += PlaybackEdges.DEFAULT_SUSTAIN_MS;
-    e.update(usages, now);
+    e.update(usages, false, now);
   }
 
   private void step(PlaybackEdges e, Map<Integer, Integer> usages) {
     now += 200;
-    e.update(usages, now);
+    e.update(usages, false, now);
   }
 
   @Test
@@ -56,7 +56,7 @@ public class PlaybackEdgesTest {
     step(e, Map.of());
     step(e, Map.of(1, 1));
     now += PlaybackEdges.DEFAULT_SUSTAIN_MS - 300;
-    e.update(Map.of(1, 1), now);
+    e.update(Map.of(1, 1), false, now);
     assertEquals(0, e.event);
     step(e, Map.of(1, 1));
     step(e, Map.of(1, 1));
@@ -140,11 +140,60 @@ public class PlaybackEdgesTest {
     assertEquals(0, e.event);
     step(e, Map.of(1, 1));
     now += PlaybackEdges.DEFAULT_SUSTAIN_MS;
-    e.update(Map.of(1, 1), now);
+    e.update(Map.of(1, 1), false, now);
     assertFalse(e.pending());
     assertEquals(1, e.event);
     e.resetBaseline();
     assertFalse(e.pending());
+  }
+
+  @Test
+  public void resumedMusicWithUnchangedMediaCountQualifiesOnceAfterSustain() {
+    var e = new PlaybackEdges(Set.of(1, 14));
+    var usages = Map.of(1, 1);
+    e.update(usages, false, now);
+    long start = now + 100;
+    e.update(usages, true, start);
+    assertTrue(e.pending());
+    e.update(usages, true, start + PlaybackEdges.DEFAULT_SUSTAIN_MS - 1);
+    assertEquals(0, e.event);
+    e.update(usages, true, start + PlaybackEdges.DEFAULT_SUSTAIN_MS);
+    assertEquals(1, e.event);
+    assertTrue(e.media);
+    e.update(usages, true, start + 2 * PlaybackEdges.DEFAULT_SUSTAIN_MS);
+    assertEquals(1, e.event);
+    assertFalse(e.pending());
+  }
+
+  @Test
+  public void resumeNeedsContinuousMusicAndMediaUsage() {
+    var e = new PlaybackEdges(Set.of(1, 14));
+    var usages = Map.of(14, 1);
+    e.update(usages, false, now);
+    e.update(usages, true, now + 100);
+    e.update(usages, false, now + 200);
+    assertFalse(e.pending());
+    e.update(usages, false, now + 1000);
+    assertEquals(0, e.event);
+    e.update(usages, true, now + 1100);
+    assertTrue(e.pending());
+    e.update(Map.of(5, 1), true, now + 1200);
+    e.update(Map.of(5, 1), true, now + 2000);
+    assertFalse(e.pending());
+    assertEquals(0, e.event);
+  }
+
+  @Test
+  public void alreadyActiveMusicAfterResetOnlyEstablishesBaseline() {
+    var e = new PlaybackEdges(Set.of(1, 14));
+    var usages = Map.of(1, 1);
+    e.update(usages, false, now);
+    e.resetBaseline();
+    e.update(usages, true, now + 100);
+    assertFalse(e.pending());
+    e.update(usages, true, now + 100 + PlaybackEdges.DEFAULT_SUSTAIN_MS);
+    assertEquals(0, e.event);
+    assertFalse(e.media);
   }
 
   @Test
@@ -161,10 +210,12 @@ public class PlaybackEdgesTest {
   public void sustainSurvivesProvisionalMuteGap() {
     var e = new PlaybackEdges(Set.of(1, 14));
     step(e, Map.of());
-    step(e, Map.of(1, 1));
+    e.update(Map.of(1, 1), true, now);
     Map<Integer, Integer> seen = PlaybackEdges.visibleUsages(Map.of(), true, true, Map.of(1, 1));
     now += PlaybackEdges.DEFAULT_SUSTAIN_MS;
-    e.update(seen, now);
+    e.update(seen, true, now);
+    e.update(Map.of(1, 1), true, now + 100);
+    assertFalse(e.pending());
     assertEquals(1, e.event);
     assertTrue(e.media);
   }
