@@ -12,6 +12,8 @@ final class MacObservation {
     private var edgeAt: TimeInterval?
     private var previousRoute: String?
     private(set) var activeBundles = Set<String>()
+    /// A new non-system output is running but not yet sustained long enough to be an event.
+    var pendingEdge: Bool { edges.pending }
     private(set) var inputSources: [String] = []
     struct Device { let address: String; let name: String; let connected: Bool }
     func devices() -> [Device] {

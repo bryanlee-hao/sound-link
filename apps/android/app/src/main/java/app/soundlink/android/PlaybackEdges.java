@@ -8,7 +8,14 @@ import java.util.*;
  * and autoplay previews do not count as a user starting playback.
  */
 final class PlaybackEdges {
-  static final long DEFAULT_SUSTAIN_MS = 1500;
+  /**
+   * Only media/game usages count, so system notification, ringtone and alarm sounds never reach
+   * this filter. It only drops short in-app media sounds (UI/game effects, previews), which are
+   * typically well under a second, while the provisional mute hides the wait from the speaker.
+   */
+  static final long DEFAULT_SUSTAIN_MS = 800;
+  /** Re-sample just after the threshold instead of waiting for the next 1-second poll. */
+  static final long SUSTAIN_CHECK_MARGIN_MS = 30;
   private final Set<Integer> mediaUsages;
   private final long sustainMs;
   private Map<Integer, Integer> previous = new HashMap<>();
@@ -55,6 +62,24 @@ final class PlaybackEdges {
     initialized = true;
     previous = new HashMap<>(usages);
     if (mediaCount == 0) media = false;
+  }
+
+  /**
+   * Muting STREAM_MUSIC briefly hides playback configurations while music keeps playing. During
+   * our own provisional mute that gap is not a stop or an unreadable state, so keep the last
+   * visible usages; outside that bounded mute the gap stays visible and fails closed.
+   */
+  static Map<Integer, Integer> visibleUsages(
+      Map<Integer, Integer> current, boolean musicActive, boolean provisionalMute,
+      Map<Integer, Integer> lastVisible) {
+    if (musicActive && current.isEmpty() && provisionalMute && lastVisible != null
+        && !lastVisible.isEmpty()) return new TreeMap<>(lastVisible);
+    return current;
+  }
+
+  /** A media rise is running but has not yet been sustained long enough to be an event. */
+  boolean pending() {
+    return pendingSince >= 0;
   }
 
   private int mediaCount(Map<Integer, Integer> usages) {

@@ -105,6 +105,7 @@ public final class ConnectionService extends Service {
         case AUTO -> connectOffline(sample);
       }
     } else publishLocal();
+    updatePreMute(sample, online, authorized, now);
     if (networkPaused) {
       state("网络重试已暂停 · " + localPolicy.status());
       if (!localPolicy.retainObservation() || !authorized) {
@@ -112,6 +113,37 @@ public final class ConnectionService extends Service {
         stopSelf();
       }
     }
+  }
+
+  /**
+   * Mutes the speaker as soon as a qualifying media rise starts; the sustain threshold still
+   * decides the takeover. A connect (online command or independent takeover) inherits the mute.
+   * A short sound, or a sustained edge that no takeover claims within the lease, releases it.
+   */
+  private void updatePreMute(JSONObject sample, boolean online, boolean authorized, long now) {
+    if (headphoneControl.busy() || localPolicy.busy()) return; // The connect owns the mute now.
+    boolean macCooldown = false;
+    try {
+      macCooldown = new JSONObject(Link.prefs(this).getString("handoff_remote", "{}"))
+          .optBoolean("cooldown");
+    } catch (Exception ignored) {
+    }
+    boolean eligible = localPolicy.preMuteEligible(sample, online, authorized, false,
+        offlineMode() == OfflineReconnectFlow.Mode.AUTO, macCooldown, now);
+    boolean pending = sample.optBoolean("pending");
+    String held = PhoneMuteGuard.provisionalToken();
+    if (held == null) {
+      if (!eligible || !pending) return;
+      preMuteEvent = sample.optInt("event", -1);
+      PhoneMuteGuard.beginProvisional(this, "premute-" + java.util.UUID.randomUUID());
+      return;
+    }
+    // Our own mute hides the player's configuration for a moment; the lease still bounds it.
+    if (OfflinePhonePolicy.muteGap(sample)) return;
+    // After the edge is sustained, keep the mute until the takeover claims it or the lease ends.
+    boolean sustained = sample.optInt("event", -1) > preMuteEvent;
+    if (!eligible || !(pending || sustained))
+      PhoneMuteGuard.release(this, held, "起播未持续或接管条件已变化");
   }
 
   private OfflineReconnectFlow.Mode offlineMode() {
@@ -176,6 +208,7 @@ public final class ConnectionService extends Service {
   }
 
   private HeadphoneControl headphoneControl;
+  private int preMuteEvent = -1;
   private final Handler main = new Handler(Looper.getMainLooper());
   private volatile boolean stopped;
   private Link.Client client;

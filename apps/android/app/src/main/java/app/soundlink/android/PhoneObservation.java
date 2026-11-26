@@ -24,6 +24,9 @@ final class PhoneObservation {
   private String signalKey = "";
   private String previousMediaRoute;
   private int muteGeneration;
+  private Map<Integer, Integer> lastVisibleUsages;
+  private boolean wasPending;
+  private final Runnable sustainCheck = () -> sample("sustain_check");
   private final PlaybackEdges edges =
       new PlaybackEdges(Set.of(AudioAttributes.USAGE_MEDIA, AudioAttributes.USAGE_GAME));
   private final AudioManager.AudioPlaybackCallback callback =
@@ -116,6 +119,8 @@ final class PhoneObservation {
     eventElapsed = -1;
     signalKey = "";
     main.removeCallbacks(poll);
+    main.removeCallbacks(sustainCheck);
+    wasPending = false;
     if (callbackRegistered) {
       audio.unregisterAudioPlaybackCallback(callback);
       callbackRegistered = false;
@@ -186,6 +191,9 @@ final class PhoneObservation {
         for (AudioPlaybackConfiguration config : configurations)
           usages.merge(config.getAudioAttributes().getUsage(), 1, Integer::sum);
         boolean music = audio.isMusicActive();
+        usages = new TreeMap<>(PlaybackEdges.visibleUsages(
+            usages, music, PhoneMuteGuard.provisional(), lastVisibleUsages));
+        if (!usages.isEmpty()) lastVisibleUsages = new TreeMap<>(usages);
         int previousEvent = edges.event;
         String routeKey =
             audio
@@ -202,10 +210,15 @@ final class PhoneObservation {
           reset = true;
         }
         if (reset) edges.resetBaseline();
-        // Mute/route reconfiguration gaps are not a user starting new playback.
-        if (!PhoneMuteGuard.active() && !(music && usages.isEmpty()))
+        // Mute/route reconfiguration gaps are not a user starting new playback. A provisional
+        // pre-mute must not stop the sustain check it is waiting for.
+        if ((!PhoneMuteGuard.active() || PhoneMuteGuard.provisional()) && !(music && usages.isEmpty()))
           edges.update(usages, SystemClock.elapsedRealtime());
         if (edges.event != previousEvent) eventElapsed = SystemClock.elapsedRealtime();
+        if (edges.pending() && !wasPending)
+          main.postDelayed(sustainCheck,
+              PlaybackEdges.DEFAULT_SUSTAIN_MS + PlaybackEdges.SUSTAIN_CHECK_MARGIN_MS);
+        wasPending = edges.pending();
         int mode = audio.getMode();
         boolean protectedAudio = mode != AudioManager.MODE_NORMAL;
         for (int usage : usages.keySet())
@@ -234,6 +247,7 @@ final class PhoneObservation {
                 "audioReadable",
                 !(music && usages.isEmpty()) && !usages.containsKey(AudioAttributes.USAGE_UNKNOWN))
             .put("media", edges.media)
+            .put("pending", edges.pending())
             // Current playback is distinct from the edge authorizing automatic takeover.
             // Muting resets edge baselines, but must not invalidate an explicit prompt choice.
             .put("mediaActive", usages.containsKey(AudioAttributes.USAGE_MEDIA)
@@ -301,6 +315,8 @@ final class PhoneObservation {
               + s.optString("playing")
               + "|"
               + s.optBoolean("media")
+              + "|"
+              + s.optBoolean("pending")
               + "|"
               + s.optBoolean("mediaActive")
               + "|"

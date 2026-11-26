@@ -127,4 +127,45 @@ public class PlaybackEdgesTest {
     assertEquals(2, e.event);
     assertTrue(e.media);
   }
+
+  @Test
+  public void pendingTracksAMediaRiseUntilItIsSustainedOrStops() {
+    var e = new PlaybackEdges(Set.of(1, 14));
+    step(e, Map.of());
+    assertFalse(e.pending());
+    step(e, Map.of(1, 1));
+    assertTrue(e.pending());
+    step(e, Map.of());
+    assertFalse(e.pending());
+    assertEquals(0, e.event);
+    step(e, Map.of(1, 1));
+    now += PlaybackEdges.DEFAULT_SUSTAIN_MS;
+    e.update(Map.of(1, 1), now);
+    assertFalse(e.pending());
+    assertEquals(1, e.event);
+    e.resetBaseline();
+    assertFalse(e.pending());
+  }
+
+  @Test
+  public void ownProvisionalMuteGapKeepsLastVisibleUsagesOnly() {
+    Map<Integer, Integer> last = Map.of(1, 1);
+    assertEquals(last, PlaybackEdges.visibleUsages(Map.of(), true, true, last));
+    assertEquals(Map.of(), PlaybackEdges.visibleUsages(Map.of(), true, false, last));
+    assertEquals(Map.of(), PlaybackEdges.visibleUsages(Map.of(), false, true, last));
+    assertEquals(Map.of(), PlaybackEdges.visibleUsages(Map.of(), true, true, null));
+    assertEquals(Map.of(14, 1), PlaybackEdges.visibleUsages(Map.of(14, 1), true, true, last));
+  }
+
+  @Test
+  public void sustainSurvivesProvisionalMuteGap() {
+    var e = new PlaybackEdges(Set.of(1, 14));
+    step(e, Map.of());
+    step(e, Map.of(1, 1));
+    Map<Integer, Integer> seen = PlaybackEdges.visibleUsages(Map.of(), true, true, Map.of(1, 1));
+    now += PlaybackEdges.DEFAULT_SUSTAIN_MS;
+    e.update(seen, now);
+    assertEquals(1, e.event);
+    assertTrue(e.media);
+  }
 }

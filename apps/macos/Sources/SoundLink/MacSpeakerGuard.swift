@@ -29,6 +29,8 @@ final class MacSpeakerGuard {
         }
     }
     func begin(_ id: String) { send("protect " + id) }
+    /// Short provisional mute while a new output proves it is sustained; `begin` takes it over.
+    func preMute(_ id: String) { send("premute " + id) }
     func release() { send("release") }
     private func send(_ line: String) {
         guard process?.isRunning == true else { return }
@@ -42,6 +44,7 @@ private final class SpeakerMuteWorker {
     private let journal: URL
     private var saved: [String: UInt32] = [:]
     private var token = ""
+    private var provisional = false
     private var expiry: DispatchWorkItem?
     init() throws {
         let root = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("Sound Link", isDirectory: true)
@@ -77,10 +80,14 @@ private final class SpeakerMuteWorker {
         try JSONEncoder().encode(saved).write(to: journal, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: journal.path)
     }
-    func protect(_ id: String) {
+    func protect(_ id: String, limit: TimeInterval = HandoffEngine.macDeadlineSeconds, provisional isProvisional: Bool = false) {
         lock.lock(); defer { lock.unlock() }
-        guard saved.isEmpty else { return } // No deadline extensions.
-        token = id
+        guard saved.isEmpty else {
+            // Only a provisional mute may be taken over, once, by the real transaction.
+            if provisional && !isProvisional { transfer(to: id, limit: limit) }
+            return // No other deadline extensions.
+        }
+        token = id; provisional = isProvisional
         let builtins = devices()
         let output = MacObservation.words(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice)?.first
         guard builtins.contains(where: { $0.1 == output }) else { emit("skipped", "当前不是内置扬声器"); return }
@@ -91,16 +98,25 @@ private final class SpeakerMuteWorker {
         do {
             try persist() // Recovery record must exist before any hardware change.
             for (uid, device) in builtins where saved[uid] != nil { try write(device, 1) }
-            let limit = HandoffEngine.macDeadlineSeconds
-            emit("muted", "内置扬声器 · 最长 \(Int(limit)) 秒")
-            let work = DispatchWorkItem { [weak self] in self?.restore("timeout_\(Int(limit))s", expected: id) }
-            expiry = work; DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + limit, execute: work)
+            emit(isProvisional ? "premuted" : "muted", "内置扬声器 · 最长 \(String(format: "%.1f", limit)) 秒")
+            arm(id, limit)
         } catch { emit("error", error.localizedDescription); restore("failure") }
+    }
+    private func arm(_ id: String, _ limit: TimeInterval) {
+        expiry?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.restore("timeout_\(String(format: "%.1f", limit))s", expected: id) }
+        expiry = work; DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + limit, execute: work)
+    }
+    /// Keeps the existing mute without unmuting first; restarts the deadline for the transaction.
+    private func transfer(to id: String, limit: TimeInterval) {
+        provisional = false; token = id
+        arm(id, limit)
+        emit("transferred", "内置扬声器 · 最长 \(Int(limit)) 秒")
     }
     func restore(_ reason: String, expected: String? = nil) {
         lock.lock(); defer { lock.unlock() }
         if let expected, expected != token { return }
-        expiry?.cancel(); expiry = nil
+        expiry?.cancel(); expiry = nil; provisional = false
         guard !saved.isEmpty else { return }
         for (uid, id) in devices() where saved[uid] != nil {
             guard let current = MacObservation.words(id, kAudioDevicePropertyMute, scope: kAudioObjectPropertyScopeOutput)?.first else { continue }
@@ -121,6 +137,9 @@ func runSpeakerGuard() {
         while let line = readLine() {
             let parts = line.split(separator: " ")
             if parts.count == 2, parts[0] == "protect", UUID(uuidString: String(parts[1])) != nil { worker.protect(String(parts[1])) }
+            else if parts.count == 2, parts[0] == "premute", UUID(uuidString: String(parts[1])) != nil {
+                worker.protect(String(parts[1]), limit: HandoffEngine.macPreMuteSeconds, provisional: true)
+            }
             else if line == "release" { worker.restore("release") }
         }
         worker.restore("parent_exit")

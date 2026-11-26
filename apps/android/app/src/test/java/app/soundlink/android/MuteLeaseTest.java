@@ -36,4 +36,22 @@ public class MuteLeaseTest {
     assertTrue(lease.transfer("waiting", "connecting", 4999, 5000));
     assertTrue(lease.deadline() < 10000);
   }
+
+  @Test public void provisionalPreMuteIsClaimedOnceByTheHandoff() {
+    var lease = new MuteLease();
+    lease.beginProvisional("premute", 1000, 3000);
+    assertTrue(lease.provisional());
+    assertTrue(lease.transfer("premute", "connect", 2500, 5000));
+    assertFalse(lease.provisional());
+    assertEquals(7500, lease.deadline());
+    assertFalse(lease.transfer("connect", "again", 3000, 5000));
+    lease.clear();
+    assertFalse(lease.provisional());
+  }
+
+  @Test public void ordinaryMuteIsNeverProvisional() {
+    var lease = new MuteLease();
+    lease.begin("connect", 0, 5000);
+    assertFalse(lease.provisional());
+  }
 }

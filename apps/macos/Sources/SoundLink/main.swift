@@ -36,6 +36,7 @@ final class Application: NSObject, NSApplicationDelegate {
     var handoffButton: ActionButton!
     let handoffLabel = NSTextField(wrappingLabelWithString: "自动切换已关闭")
     var sourceBundles = Set<String>()
+    var preMuteID: String?
     var lastPhoneHandoffReport = ""
     var observedAt: TimeInterval = 0
     let targetLabel = NSTextField(wrappingLabelWithString: "尚未选择目标耳机")
@@ -323,6 +324,7 @@ final class Application: NSObject, NSApplicationDelegate {
                 if success { self.handoff.macVerified(t.id, observation: current) } else { self.handoff.failed(t.id, message) }
             }
         }
+        updatePreMute(o)
         if o.mac.connection == "disconnected", let t = handoff.takeMacPause() {
             let safe = o.mac.instance == t.mac.instance && o.mac.event == t.mac.event && !o.mac.protectedAudio && o.mac.connection == "disconnected" && sourceBundles == audioObserver.activeBundles
             let message = !safe ? "旧 Mac 状态变化或仍连接，跳过暂停" : o.mac.playing != "active" ? "Mac 已停止播放，无需暂停" : hardware.pause(bundles: sourceBundles)
@@ -517,6 +519,21 @@ final class Application: NSObject, NSApplicationDelegate {
     @objc func show() { window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc func quit() { NSApp.terminate(nil) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { show(); return true }
+    /// Mutes the built-in speaker as soon as a qualifying new output starts; the sustain
+    /// threshold still decides the takeover. A Mac transaction inherits the mute (it already
+    /// called `begin` above); a short sound or any other outcome releases it.
+    private func updatePreMute(_ o: ObservationEngine) {
+        let wanted = manualOperation == nil && handoff.macPreMuteAllowed(o, available: engine.available, pending: audioObserver.pendingEdge)
+        if wanted {
+            guard preMuteID == nil else { return }
+            let id = UUID().uuidString
+            preMuteID = id; hardware.speakerGuard.preMute(id)
+            return
+        }
+        guard preMuteID != nil else { return }
+        preMuteID = nil
+        if manualOperation == nil && handoff.transaction?.destination != "mac" { hardware.speakerGuard.release() }
+    }
     func applicationWillTerminate(_ note: Notification) { cancelManual(); handoff.cancel("Mac 退出"); hardware.cancel(); hardware.speakerGuard.stop(); diagnostics?.event("mac_exit", data: [:]); watchdog.stop(); timer?.invalidate(); audioTimer?.invalidate(); control?.stop(); engine?.suspend(); discovery?.stop() }
 }
 if CommandLine.arguments.contains("--speaker-guard") { runSpeakerGuard(); exit(0) }

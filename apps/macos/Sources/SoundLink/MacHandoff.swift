@@ -10,7 +10,8 @@ final class MacHandoff: NSObject {
     private var timer: Timer?
     private var routeAttempted = false
     private var completion: ((Bool, String) -> Void)?
-    func cancel() { speakerGuard.release(); mark("verification_closed"); timing = nil; id = ""; timer?.invalidate(); timer = nil; completion = nil }
+    func cancel() { speakerGuard.release(); reset() }
+    private func reset() { mark("verification_closed"); timing = nil; id = ""; timer?.invalidate(); timer = nil; completion = nil }
     private var timing: (([String: Any]) -> Void)?
     private var started: TimeInterval = 0
     private var stages = Set<String>()
@@ -25,7 +26,9 @@ final class MacHandoff: NSObject {
         perform(id: UUID().uuidString, address: address, eventAgeMs: -1, valid: valid, mayMutate: valid, progress: progress, completion: completion)
     }
     private func perform(id operationID: String, address: String, eventAgeMs: Double, valid: @escaping () -> Bool, mayMutate: @escaping () -> Bool, progress: @escaping ([String: Any]) -> Void, completion: @escaping (Bool, String) -> Void) {
-        cancel(); id = operationID; self.completion = completion; routeAttempted = false
+        // Release only an older operation's mute; a provisional pre-mute is taken over by `begin`.
+        if id.isEmpty { reset() } else { cancel() }
+        id = operationID; self.completion = completion; routeAttempted = false
         started = MonotonicTime.now; stages = []; timing = progress
         mark("executor_started", fields: ["edgeToExecutorMs": eventAgeMs, "initialLinkConnected": IOBluetoothDevice(addressString: address)?.isConnected() ?? false])
         guard valid(), mayMutate() else { finish(false, "连接前状态已变化，未提交请求"); return }

@@ -5,6 +5,9 @@ public final class HandoffEngine {
     /// Paging headphones held by the phone regularly takes 5-8 seconds on macOS.
     public static let macDeadlineSeconds: TimeInterval = 10
     public static let phoneDeadlineSeconds: TimeInterval = 5
+    /// Provisional speaker mute while a new Mac output is still proving it is sustained.
+    /// Covers the sustain window plus observation slack; a transaction then takes it over.
+    public static let macPreMuteSeconds: TimeInterval = OutputEdges.defaultSustainSeconds + 1
     public struct Transaction {
         public let id: String, destination: String, epoch: String, target: HeadphoneTarget
         public let mac: AudioObservation, phone: AudioObservation
@@ -128,6 +131,19 @@ public final class HandoffEngine {
         report(direction == "phone" ? "手机正在接管 · 等待耳机及媒体路由" : offline ? "Mac 离线接管 · 单次连接，不补发手机暂停" : "Mac 正在接管 · 等待耳机及输出路由")
         if direction == "mac" { macAction = t }
     }
+    /// Whether a pending (not yet sustained) Mac output may mute the built-in speaker early.
+    /// Mirrors the takeover preconditions except the sustain itself, so a short sound or a
+    /// non-eligible state never mutes. Never true while any transaction or cooldown exists.
+    public func macPreMuteAllowed(_ o: ObservationEngine, available: Bool, pending: Bool) -> Bool {
+        guard pending, enabled, available, transaction == nil, clock() >= cooldown, phoneReady, !phoneLocalActive,
+              o.target.ready, o.mac.targetRevision == o.target.revision, o.mac.ageMs < 10000,
+              o.mac.connection == "disconnected", o.mac.isAudioReadable else { return false }
+        if o.phoneAge < 10 {
+            return o.phone.targetRevision == o.target.revision && o.phone.connection == "connected"
+                && o.phone.isAudioReadable && !o.phone.protectedAudio
+        }
+        return o.offlineUseValid
+    }
     /// Once the phone shows protection or a new intent, only bounded reads remain, even if it changes back.
     /// Mac-side output churn (route reconfiguration, alerts, extra players) is expected while
     /// the headphones move and never cancels the Mac's own committed takeover.
@@ -175,7 +191,7 @@ public final class HandoffEngine {
         if consume { consumeObserved() }; phase = "finished"; report(message); transaction = nil; macAction = nil; macPause = nil; cooldown = routeProven ? 0 : clock() + 10
     }
     public var object: [String: Any] {
-        var result: [String: Any] = ["enabled": enabled, "status": status, "history": history, "phoneReady": phoneReady, "phase": phase, "lastOutcome": lastOutcome]
+        var result: [String: Any] = ["enabled": enabled, "status": status, "history": history, "phoneReady": phoneReady, "phase": phase, "lastOutcome": lastOutcome, "cooldown": clock() < cooldown]
         if let t = transaction, valid(t.id), phase == "connecting_phone" || phase == "pausing_phone" {
             result["command"] = ["id": t.id, "epoch": t.epoch, "action": phase == "connecting_phone" ? "connect" : "pause", "revision": t.target.revision,
                 "address": t.target.phoneAddress, "instance": t.phone.instance, "event": t.phone.event,

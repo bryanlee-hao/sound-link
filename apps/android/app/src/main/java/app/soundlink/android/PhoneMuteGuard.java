@@ -39,6 +39,29 @@ final class PhoneMuteGuard {
   }
 
   static void begin(Context c, String token, long budget) {
+    begin(c, token, budget, false);
+  }
+
+  /** Total pre-mute budget: the sustain window plus time for the takeover to claim it. */
+  static final long PRE_MUTE_MS = PlaybackEdges.DEFAULT_SUSTAIN_MS + 1500;
+
+  /**
+   * Mutes as soon as a qualifying media rise starts. It does not reset playback edges, so the
+   * sustain check keeps running; a handoff takes it over via {@link #transfer}.
+   */
+  static void beginProvisional(Context c, String token) {
+    begin(c, token, PRE_MUTE_MS, true);
+  }
+
+  static boolean provisional() {
+    return lease.provisional();
+  }
+
+  static String provisionalToken() {
+    return lease.provisional() ? lease.token() : null;
+  }
+
+  private static void begin(Context c, String token, long budget, boolean provisional) {
     if (lease.active() || budget <= 0) return; // Never extend an existing guard's deadline.
     recover(c, "开始前恢复");
     if (!state(c).getString("token", "").isEmpty()) return;
@@ -56,19 +79,23 @@ final class PhoneMuteGuard {
         if (d.getType() != AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
             && d.getType() != AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE) return;
       if (!state(c).edit().putString("token", token).commit()) return;
-      lease.begin(token, SystemClock.elapsedRealtime(), Math.min(5000, budget));
-      generation++;
+      long limit = Math.min(5000, budget);
+      if (provisional) lease.beginProvisional(token, SystemClock.elapsedRealtime(), limit);
+      else {
+        lease.begin(token, SystemClock.elapsedRealtime(), limit);
+        generation++;
+      }
       schedule(c, token);
       audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0);
       Diagnostics.event(
           c,
           "mute_guard",
-          "媒体临时静音（最长 5 秒）",
+          provisional ? "起播候选期预静音（最长 " + limit + " ms）" : "媒体临时静音（最长 5 秒）",
           Diagnostics.fields(
               "id",
               token,
               "stage",
-              "begin",
+              provisional ? "premute" : "begin",
               "verified",
               audio.isStreamMute(AudioManager.STREAM_MUSIC)),
           true);

@@ -350,8 +350,10 @@ final class HeadphoneControl {
               "request_elapsed_ms",
               connectStarted),
           true);
-      if (promptMuteToken == null) PhoneMuteGuard.begin(context, key);
-      else PhoneMuteGuard.transfer(context, promptMuteToken, key,
+      // A provisional pre-mute from the playback edge is taken over without unmuting first.
+      String inherited = promptMuteToken != null ? promptMuteToken : PhoneMuteGuard.provisionalToken();
+      if (inherited == null) PhoneMuteGuard.begin(context, key);
+      else PhoneMuteGuard.transfer(context, inherited, key,
           Math.max(0, deadline - SystemClock.elapsedRealtime()));
       mark("connect_requested");
       int code = d.connect();

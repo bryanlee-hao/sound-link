@@ -6,6 +6,8 @@ public struct OutputEdges {
     public static let defaultSustainSeconds: TimeInterval = 1.5
     public private(set) var event = 0
     public private(set) var eligible = false
+    /// A non-baseline output is running but has not yet reached the sustain threshold.
+    public private(set) var pending = false
     private let sustainSeconds: TimeInterval
     private var initialized = false
     private var previous = Set<UInt32>()
@@ -15,7 +17,7 @@ public struct OutputEdges {
         self.sustainSeconds = sustainSeconds
     }
     public mutating func resetBaseline() {
-        initialized = false; previous = []; pendingSince = [:]; qualifying = []; eligible = false
+        initialized = false; previous = []; pendingSince = [:]; qualifying = []; eligible = false; pending = false
     }
     public mutating func update(active: Set<UInt32>, readable: Bool = true, now: TimeInterval) {
         guard readable else { resetBaseline(); return }
@@ -30,6 +32,7 @@ public struct OutputEdges {
         }
         qualifying.formIntersection(active)
         eligible = !qualifying.isEmpty
+        pending = !pendingSince.isEmpty
         previous = active
     }
 }

@@ -303,4 +303,40 @@ final class HandoffTests: XCTestCase {
         XCTAssertNil(h.takeMacPause()); XCTAssertNil(h.transaction)
     }
 
+    func testMacPreMuteOnlyWhenTakeoverPreconditionsHold() throws {
+        o.mac.connection = "disconnected"; phone.connection = "connected"; sync()
+        XCTAssertTrue(h.macPreMuteAllowed(o, available: true, pending: true))
+        XCTAssertFalse(h.macPreMuteAllowed(o, available: true, pending: false))
+        XCTAssertFalse(h.macPreMuteAllowed(o, available: false, pending: true))
+        phone.protectedAudio = true; sync()
+        XCTAssertFalse(h.macPreMuteAllowed(o, available: true, pending: true))
+        phone.protectedAudio = false; phone.connection = "disconnected"; sync()
+        XCTAssertFalse(h.macPreMuteAllowed(o, available: true, pending: true))
+        phone.connection = "connected"; o.mac.connection = "connected"; sync()
+        XCTAssertFalse(h.macPreMuteAllowed(o, available: true, pending: true))
+        o.mac.connection = "disconnected"; sync()
+        h.enabled = false; XCTAssertFalse(h.macPreMuteAllowed(o, available: true, pending: true))
+        h.enabled = true
+        h.receive(["ready": false, "revision": o.target.revision], observation: o)
+        XCTAssertFalse(h.macPreMuteAllowed(o, available: true, pending: true))
+    }
+    func testMacPreMuteStopsOnceTransactionOrFailureCooldownExists() throws {
+        o.mac.connection = "disconnected"; phone.connection = "connected"; sync()
+        o.mac.event += 1; sync()
+        let t = try XCTUnwrap(h.takeMacAction())
+        XCTAssertFalse(h.macPreMuteAllowed(o, available: true, pending: true))
+        h.failed(t.id, "超时")
+        XCTAssertEqual(h.object["cooldown"] as? Bool, true)
+        XCTAssertFalse(h.macPreMuteAllowed(o, available: true, pending: true))
+        now += 11; sync()
+        XCTAssertEqual(h.object["cooldown"] as? Bool, false)
+        XCTAssertTrue(h.macPreMuteAllowed(o, available: true, pending: true))
+    }
+    func testOfflineMacPreMuteFollowsUsageSession() throws {
+        o.mac.connection = "disconnected"; phone.connection = "connected"; sync()
+        now += 20; o.evaluate(online: false)
+        XCTAssertTrue(h.macPreMuteAllowed(o, available: true, pending: true))
+        o.allowOfflineMac = false
+        XCTAssertFalse(h.macPreMuteAllowed(o, available: true, pending: true))
+    }
 }

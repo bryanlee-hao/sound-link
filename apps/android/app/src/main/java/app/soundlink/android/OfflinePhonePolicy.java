@@ -101,6 +101,41 @@ final class OfflinePhonePolicy {
         && local.optBoolean("media");
   }
 
+  /**
+   * Whether the phone may mute its speaker while a new media rise is still proving it is
+   * sustained. Mirrors the takeover preconditions except the sustain itself: online needs a fresh
+   * Mac holding the headphones outside its failure cooldown; offline needs the independent
+   * takeover to be armed. Unknown or protected state never mutes.
+   */
+  boolean preMuteEligible(
+      JSONObject local,
+      boolean online,
+      boolean authorized,
+      boolean executorBusy,
+      boolean offlineAuto,
+      boolean macCooldown,
+      long now) {
+    if (!authorized || !enabled || busy || executorBusy || macProtected) return false;
+    if (local.optDouble("ageMs", 10000) >= 10000
+        || !HandoffCommand.audioReadable(local)
+        || local.optBoolean("protectedAudio", true)
+        || !"disconnected".equals(local.optString("connection"))) return false;
+    if (online)
+      return !macCooldown
+          && macAt >= 0
+          && now - macAt < 10000
+          && "connected".equals(macConnection);
+    return offlineAuto && session && !blocked;
+  }
+
+  /**
+   * Muting STREAM_MUSIC briefly hides playback configurations while music stays active. That gap
+   * is neither a stop nor protection, so a held pre-mute keeps waiting instead of releasing.
+   */
+  static boolean muteGap(JSONObject local) {
+    return local.optBoolean("musicActive") && local.optBoolean("playbackConfigurationsEmpty");
+  }
+
   void begin() {
     busy = true;
     blocked = true;

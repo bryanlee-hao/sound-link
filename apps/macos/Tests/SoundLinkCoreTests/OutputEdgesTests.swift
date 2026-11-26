@@ -44,6 +44,16 @@ final class OutputEdgesTests: XCTestCase {
         XCTAssertEqual(e.event, 1); XCTAssertFalse(e.eligible)
         sustain(&e, [1, 2, 3]); XCTAssertEqual(e.event, 2); XCTAssertTrue(e.eligible)
     }
+    func testPendingIsTrueOnlyWhileNewOutputIsProvingSustain() {
+        var e = OutputEdges()
+        step(&e, [1]); XCTAssertFalse(e.pending)
+        step(&e, [1, 2]); XCTAssertTrue(e.pending); XCTAssertEqual(e.event, 0)
+        step(&e, [1]); XCTAssertFalse(e.pending)
+        step(&e, [1, 3]); step(&e, [1, 3], by: OutputEdges.defaultSustainSeconds)
+        XCTAssertFalse(e.pending); XCTAssertEqual(e.event, 1)
+        step(&e, [1, 3], readable: false); XCTAssertFalse(e.pending)
+        step(&e, [1, 3, 4]); XCTAssertFalse(e.pending) // First readable sample is baseline.
+    }
     func testSystemAlertSourcesAreRecognisedCaseInsensitively() {
         XCTAssertTrue(SystemSoundSources.isSystemSound("systemsoundserverd"))
         XCTAssertTrue(SystemSoundSources.isSystemSound("com.apple.UserNotificationCenter"))

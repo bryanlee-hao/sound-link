@@ -134,4 +134,45 @@ public class OfflinePhonePolicyTest {
     p.remote(protectedMac, true, sample(4), 40001);
     assertFalse(p.observe(sample(5), false, true, false, 60000));
   }
+
+  @Test
+  public void preMuteOnlineNeedsFreshUnprotectedMacHoldingHeadphones() throws Exception {
+    OfflinePhonePolicy p = ready();
+    JSONObject local = sample(1).put("audioReadable", true);
+    assertTrue(p.preMuteEligible(local, true, true, false, true, false, 5000));
+    assertFalse(p.preMuteEligible(local, true, true, false, true, true, 5000)); // Mac cooldown
+    assertFalse(p.preMuteEligible(local, true, true, false, true, false, 10100)); // Mac stale
+    assertFalse(p.preMuteEligible(local, true, false, false, true, false, 5000));
+    assertFalse(p.preMuteEligible(local, true, true, true, true, false, 5000));
+    assertFalse(
+        p.preMuteEligible(sample(1).put("connection", "connected"), true, true, false, true, false, 5000));
+    assertFalse(
+        p.preMuteEligible(sample(1).put("protectedAudio", true), true, true, false, true, false, 5000));
+    p.remote(remote("disconnected", p.recoveryToken()), true, local, 6000);
+    assertFalse(p.preMuteEligible(local, true, true, false, true, false, 6000));
+    p.remote(remote("connected", p.recoveryToken()), false, local, 7000);
+    assertFalse(p.preMuteEligible(local, true, true, false, true, false, 7000));
+  }
+
+  @Test
+  public void preMuteOfflineFollowsIndependentTakeoverArming() throws Exception {
+    OfflinePhonePolicy p = ready();
+    JSONObject local = sample(1).put("audioReadable", true);
+    assertTrue(p.preMuteEligible(local, false, true, false, true, false, 20000));
+    assertFalse(p.preMuteEligible(local, false, true, false, false, false, 20000)); // mode NEVER
+    p.begin();
+    assertFalse(p.preMuteEligible(local, false, true, false, true, false, 20000));
+    p.finish(false, "超时");
+    assertFalse(p.preMuteEligible(local, false, true, false, true, false, 20001));
+  }
+
+  @Test
+  public void muteInducedConfigurationGapIsNotAStopOrProtection() throws Exception {
+    JSONObject gap = sample(1).put("musicActive", true).put("playbackConfigurationsEmpty", true);
+    assertTrue(OfflinePhonePolicy.muteGap(gap));
+    assertFalse(OfflinePhonePolicy.muteGap(sample(1).put("musicActive", true)
+        .put("playbackConfigurationsEmpty", false)));
+    assertFalse(OfflinePhonePolicy.muteGap(sample(1).put("musicActive", false)
+        .put("playbackConfigurationsEmpty", true)));
+  }
 }
