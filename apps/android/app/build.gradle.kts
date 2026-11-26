@@ -19,8 +19,8 @@ android {
         minSdk = 37
         targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 1005
-        versionName = "1.0.5"
+        versionCode = 1006
+        versionName = "1.0.6"
         manifestPlaceholders["appLabel"] = providers.environmentVariable("SOUNDLINK_APP_NAME").orElse("Sound Link Dev").get()
         for ((field, variable) in mapOf("WEBSITE_URL" to "SOUNDLINK_WEBSITE_URL", "UPDATE_BASE_URL" to "SOUNDLINK_UPDATE_BASE_URL")) {
             val value = providers.environmentVariable(variable).orElse("").get()
